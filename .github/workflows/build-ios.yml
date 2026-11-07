@@ -1,0 +1,75 @@
+name: Build phoneME iOS
+
+on:
+  push:
+    branches:
+      - feature/manicemu-j2me-skins
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phoneme-ios-{{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ios:
+    name: Build unsigned iOS app
+    runs-on: macos-15
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.3
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.3'
+
+      - name: Install build tools
+        run: |
+          brew list ripgrep >/dev/null 2>&1 || brew install ripgrep
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          cmake --version
+
+      - name: Build phoneME for physical iPhone (unsigned)
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild \
+            -project phoneME.xcodeproj \
+            -target phoneME \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath "$GITHUB_WORKSPACE/build/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tee build/xcodebuild.log
+
+      - name: Package unsigned IPA for ESign
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/phoneME.app"
+          test -d "$APP_PATH"
+          mkdir -p build/ipa/Payload
+          cp -R "$APP_PATH" build/ipa/Payload/phoneME.app
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent build/ipa/Payload build/phoneME-unsigned.ipa
+          unzip -l build/phoneME-unsigned.ipa | head -40
+          shasum -a 256 build/phoneME-unsigned.ipa | tee build/phoneME-unsigned.ipa.sha256
+
+      - name: Upload IPA and build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phoneME-iOS-{{ github.run_number }}
+          path: |
+            build/phoneME-unsigned.ipa
+            build/phoneME-unsigned.ipa.sha256
+            build/xcodebuild.log
+          if-no-files-found: warn
+          retention-days: 14
