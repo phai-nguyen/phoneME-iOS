@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: phoneme-ios-{{ github.ref }}
+  group: phoneme-ios-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -66,7 +66,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: phoneME-iOS-{{ github.run_number }}
+          name: phoneME-iOS-${{ github.run_number }}
           path: |
             build/phoneME-unsigned.ipa
             build/phoneME-unsigned.ipa.sha256
