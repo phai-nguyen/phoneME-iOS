@@ -16,24 +16,26 @@ concurrency:
 jobs:
   build-ios:
     name: Build unsigned iOS app
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 90
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
 
     steps:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Select Xcode 26.3
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: '26.3'
-
-      - name: Install build tools
+      - name: Verify Apple build tools
         run: |
           brew list ripgrep >/dev/null 2>&1 || brew install ripgrep
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
           cmake --version
+
+      - name: Confirm shared Xcode scheme
+        run: |
+          xcodebuild -list -project phoneME.xcodeproj
+          test -f phoneME.xcodeproj/xcshareddata/xcschemes/phoneME.xcscheme
 
       - name: Build phoneME for physical iPhone (unsigned)
         shell: bash
@@ -42,7 +44,7 @@ jobs:
           mkdir -p build
           xcodebuild \
             -project phoneME.xcodeproj \
-            -target phoneME \
+            -scheme phoneME \
             -sdk iphoneos \
             -configuration Release \
             -derivedDataPath "$GITHUB_WORKSPACE/build/DerivedData" \
