@@ -43,6 +43,10 @@
 		A00000000000000000000035 /* WorkspacesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000039 /* WorkspacesView.swift */; };
 		A00000000000000000000036 /* PhoneMEMetal3DBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000003A /* PhoneMEMetal3DBridge.mm */; };
 		A00000000000000000000037 /* PhoneMETrollStoreJIT.m in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000003B /* PhoneMETrollStoreJIT.m */; };
+
+		A0000000000000000000003E /* ManicSkinArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000003E /* ManicSkinArchive.swift */; };
+		A0000000000000000000003F /* ManicSkinStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000003F /* ManicSkinStore.swift */; };
+		A00000000000000000000040 /* ManicSkinView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000040 /* ManicSkinView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -91,6 +95,10 @@
 		B00000000000000000000039 /* WorkspacesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacesView.swift; sourceTree = "<group>"; };
 		B0000000000000000000003A /* PhoneMEMetal3DBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = PhoneMEMetal3DBridge.mm; sourceTree = "<group>"; };
 		B0000000000000000000003B /* PhoneMETrollStoreJIT.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PhoneMETrollStoreJIT.m; sourceTree = "<group>"; };
+
+		B0000000000000000000003E /* ManicSkinArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManicSkinArchive.swift; sourceTree = "<group>"; };
+		B0000000000000000000003F /* ManicSkinStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManicSkinStore.swift; sourceTree = "<group>"; };
+		B00000000000000000000040 /* ManicSkinView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManicSkinView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -159,6 +167,8 @@
 				B00000000000000000000015 /* ProfileTemplateStore.swift */,
 				B00000000000000000000026 /* BackgroundExecutionController.swift */,
 				B00000000000000000000028 /* PhoneMEStorageController.swift */,
+				B0000000000000000000003E /* ManicSkinArchive.swift */,
+				B0000000000000000000003F /* ManicSkinStore.swift */,
 				B00000000000000000000038 /* WorkspaceStore.swift */,
 			);
 			path = Services;
@@ -189,6 +199,7 @@
 				B00000000000000000000009 /* LibraryView.swift */,
 				B0000000000000000000000A /* EmulatorView.swift */,
 				B0000000000000000000000B /* KeypadView.swift */,
+				B00000000000000000000040 /* ManicSkinView.swift */,
 				B0000000000000000000000C /* SettingsView.swift */,
 				B00000000000000000000010 /* GameProfileEditorView.swift */,
 				B0000000000000000000001C /* NativeLCDUIView.swift */,
@@ -363,6 +374,10 @@
 				A00000000000000000000035 /* WorkspacesView.swift in Sources */,
 				A00000000000000000000036 /* PhoneMEMetal3DBridge.mm in Sources */,
 				A00000000000000000000037 /* PhoneMETrollStoreJIT.m in Sources */,
+
+				A0000000000000000000003E /* ManicSkinArchive.swift in Sources */,
+				A0000000000000000000003F /* ManicSkinStore.swift in Sources */,
+				A00000000000000000000040 /* ManicSkinView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

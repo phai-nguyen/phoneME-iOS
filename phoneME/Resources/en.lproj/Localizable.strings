@@ -238,6 +238,30 @@
 "Rectangle" = "Rectangle";
 "Rounded rectangle" = "Rounded rectangle";
 
+
+/* ManicEMU J2ME skins */
+"Java Controller Skin" = "Java Controller Skin";
+"Java controller skin" = "Java controller skin";
+"Built-in keypad" = "Built-in keypad";
+"Import ManicEMU Skin" = "Import ManicEMU Skin";
+"Using %@ for the virtual Java controls." = "Using %@ for the virtual Java controls.";
+"The built-in phoneME keypad is currently active." = "The built-in phoneME keypad is currently active.";
+"The selected ManicEMU skin could not be read." = "The selected ManicEMU skin could not be read.";
+"The ManicEMU skin archive is too large." = "The ManicEMU skin archive is too large.";
+"The selected file is not a valid ManicEMU skin archive." = "The selected file is not a valid ManicEMU skin archive.";
+"Encrypted ManicEMU skin archives are not supported." = "Encrypted ManicEMU skin archives are not supported.";
+"This ManicEMU skin uses an unsupported ZIP compression method." = "This ManicEMU skin uses an unsupported ZIP compression method.";
+"The ManicEMU skin contains an unsafe file path." = "The ManicEMU skin contains an unsafe file path.";
+"The ManicEMU skin contains an invalid archive entry." = "The ManicEMU skin contains an invalid archive entry.";
+"The ManicEMU skin does not contain info.json." = "The ManicEMU skin does not contain info.json.";
+"A ManicEMU skin asset could not be decompressed." = "A ManicEMU skin asset could not be decompressed.";
+"A ManicEMU skin asset failed its integrity check." = "A ManicEMU skin asset failed its integrity check.";
+"The ManicEMU skin info.json file is invalid." = "The ManicEMU skin info.json file is invalid.";
+"This ManicEMU skin is not a Java ME skin." = "This ManicEMU skin is not a Java ME skin.";
+"The ManicEMU skin is missing asset %@." = "The ManicEMU skin is missing asset %@.";
+"The ManicEMU skin could not be imported: %@" = "The ManicEMU skin could not be imported: %@.";
+"ManicEMU Java controller skin" = "ManicEMU Java controller skin";
+
 /* Emulator */
 "Move Virtual Keys" = "Move Virtual Keys";
 "Resize Key Groups" = "Resize Key Groups";

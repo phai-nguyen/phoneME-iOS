@@ -17,6 +17,7 @@ struct EmulatorView: View {
     @EnvironmentObject private var library: GameLibrary
     @EnvironmentObject private var profiles: GameProfileStore
     @EnvironmentObject private var session: EmulatorSession
+    @EnvironmentObject private var manicSkinStore: ManicSkinStore
 
     @AppStorage("enableActionBar") private var enableActionBar = true
     @AppStorage("enableStatusBar") private var enableStatusBar = true
@@ -178,33 +179,49 @@ struct EmulatorView: View {
                                     profile: runtimeProfile
                                 )
 
-                                ZStack {
-                                    FrameSurface(
-                                        frameStore: session.frameStore,
-                                        profile: runtimeProfile
-                                    )
-                                        .environmentObject(session)
-                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                                    if showKeypad {
-                                        KeypadView(
-                                            profile: $runtimeProfile,
-                                            editMode: keyboardAdjustmentMode,
-                                            layoutRect: keyboardFrame(
-                                                in: canvasGeometry.size
-                                            ),
-                                            displayRect: displayRect,
-                                            onKeyActivity: { active in
-                                                handleVirtualKeyActivity(
-                                                    active,
-                                                    obscuresDisplay: keyboardObscuresDisplay
-                                                )
-                                            },
-                                            onObscuresDisplayChange: updateKeyboardOverlap
-                                        )
-                                        .environmentObject(session)
-                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                Group {
+                                    if showKeypad,
+                                       keyboardAdjustmentMode == .none,
+                                       let selectedSkin = manicSkinStore.selectedSkin {
+                                        ManicSkinView(skin: selectedSkin, session: session) {
+                                            FrameSurface(
+                                                frameStore: session.frameStore,
+                                                profile: runtimeProfile
+                                            )
+                                            .environmentObject(session)
+                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        }
                                         .transition(.opacity)
+                                    } else {
+                                        ZStack {
+                                            FrameSurface(
+                                                frameStore: session.frameStore,
+                                                profile: runtimeProfile
+                                            )
+                                            .environmentObject(session)
+                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                                            if showKeypad {
+                                                KeypadView(
+                                                    profile: $runtimeProfile,
+                                                    editMode: keyboardAdjustmentMode,
+                                                    layoutRect: keyboardFrame(
+                                                        in: canvasGeometry.size
+                                                    ),
+                                                    displayRect: displayRect,
+                                                    onKeyActivity: { active in
+                                                        handleVirtualKeyActivity(
+                                                            active,
+                                                            obscuresDisplay: keyboardObscuresDisplay
+                                                        )
+                                                    },
+                                                    onObscuresDisplayChange: updateKeyboardOverlap
+                                                )
+                                                .environmentObject(session)
+                                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                                .transition(.opacity)
+                                            }
+                                        }
                                     }
                                 }
                             }

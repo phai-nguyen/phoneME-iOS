@@ -238,6 +238,30 @@
 "Rectangle" = "Chữ nhật";
 "Rounded rectangle" = "Chữ nhật bo góc";
 
+
+/* Skin J2ME ManicEMU */
+"Java Controller Skin" = "Giao diện phím Java";
+"Java controller skin" = "Giao diện phím Java";
+"Built-in keypad" = "Bàn phím mặc định";
+"Import ManicEMU Skin" = "Nhập skin ManicEMU";
+"Using %@ for the virtual Java controls." = "Đang sử dụng %@ cho các phím điều khiển Java ảo.";
+"The built-in phoneME keypad is currently active." = "Đang sử dụng bàn phím tích hợp của phoneME.";
+"The selected ManicEMU skin could not be read." = "Không thể đọc skin ManicEMU đã chọn.";
+"The ManicEMU skin archive is too large." = "Tệp skin ManicEMU vượt quá dung lượng cho phép.";
+"The selected file is not a valid ManicEMU skin archive." = "Tệp đã chọn không phải gói skin ManicEMU hợp lệ.";
+"Encrypted ManicEMU skin archives are not supported." = "Không hỗ trợ gói skin ManicEMU được mã hóa.";
+"This ManicEMU skin uses an unsupported ZIP compression method." = "Skin ManicEMU sử dụng phương pháp nén ZIP không được hỗ trợ.";
+"The ManicEMU skin contains an unsafe file path." = "Skin ManicEMU chứa đường dẫn tệp không an toàn.";
+"The ManicEMU skin contains an invalid archive entry." = "Skin ManicEMU chứa mục lưu trữ không hợp lệ.";
+"The ManicEMU skin does not contain info.json." = "Skin ManicEMU không có tệp info.json.";
+"A ManicEMU skin asset could not be decompressed." = "Không thể giải nén tài nguyên của skin ManicEMU.";
+"A ManicEMU skin asset failed its integrity check." = "Tài nguyên skin ManicEMU không vượt qua kiểm tra toàn vẹn.";
+"The ManicEMU skin info.json file is invalid." = "Tệp info.json của skin ManicEMU không hợp lệ.";
+"This ManicEMU skin is not a Java ME skin." = "Skin ManicEMU này không dành cho Java ME.";
+"The ManicEMU skin is missing asset %@." = "Skin ManicEMU bị thiếu tài nguyên %@.";
+"The ManicEMU skin could not be imported: %@" = "Không thể nhập skin ManicEMU: %@";
+"ManicEMU Java controller skin" = "Giao diện điều khiển Java ManicEMU";
+
 /* Trình giả lập */
 "Move Virtual Keys" = "Di chuyển phím ảo";
 "Resize Key Groups" = "Đổi kích thước nhóm phím";

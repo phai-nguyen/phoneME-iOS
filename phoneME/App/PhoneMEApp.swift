@@ -27,6 +27,7 @@ struct PhoneMEApp: App {
         AppLanguage.defaultLanguage.rawValue
 
     @StateObject private var storage: PhoneMEStorageController
+    @StateObject private var manicSkinStore: ManicSkinStore
     @StateObject private var library: GameLibrary
     @StateObject private var profiles: GameProfileStore
     @StateObject private var profileTemplates: ProfileTemplateStore
@@ -39,6 +40,9 @@ struct PhoneMEApp: App {
         let storage = PhoneMEStorageController()
         PhoneMERuntimeResources.configure(storageRootURL: storage.rootURL)
         _storage = StateObject(wrappedValue: storage)
+        _manicSkinStore = StateObject(
+            wrappedValue: ManicSkinStore(storageRootURL: storage.rootURL)
+        )
         _library = StateObject(wrappedValue: GameLibrary(storage: storage))
         _profiles = StateObject(wrappedValue: GameProfileStore(storage: storage))
         _profileTemplates = StateObject(
@@ -63,6 +67,7 @@ struct PhoneMEApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(storage)
+                .environmentObject(manicSkinStore)
                 .environmentObject(library)
                 .environmentObject(profiles)
                 .environmentObject(profileTemplates)
@@ -115,6 +120,7 @@ struct PhoneMEApp: App {
         Settings {
             SettingsView()
                 .environmentObject(storage)
+                .environmentObject(manicSkinStore)
                 .environmentObject(library)
                 .environmentObject(profiles)
                 .environmentObject(profileTemplates)

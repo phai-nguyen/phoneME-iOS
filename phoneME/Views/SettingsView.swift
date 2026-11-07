@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum AppTheme: String, CaseIterable, Identifiable {
     case light
@@ -40,6 +41,7 @@ struct SettingsView: View {
     @EnvironmentObject private var profileTemplates: ProfileTemplateStore
     @EnvironmentObject private var session: EmulatorSession
     @EnvironmentObject private var backgroundExecution: BackgroundExecutionController
+    @EnvironmentObject private var manicSkinStore: ManicSkinStore
 
     @AppStorage(AppLanguage.preferenceKey) private var appLanguage =
         AppLanguage.defaultLanguage.rawValue
@@ -50,6 +52,8 @@ struct SettingsView: View {
     @AppStorage("enableStatusBar") private var enableStatusBar = false
     @AppStorage("keepScreenOn") private var keepScreenOn = false
     @State private var storageErrorMessage: String?
+    @State private var isImportingManicSkin = false
+    @State private var manicSkinErrorMessage: String?
 
     var body: some View {
         Form {
@@ -119,6 +123,33 @@ struct SettingsView: View {
 #endif
 
             Section {
+                Picker("Java controller skin", selection: manicSkinSelectionBinding) {
+                    Text("Built-in keypad").tag("")
+                    ForEach(manicSkinStore.skins) { skin in
+                        Text(skin.name).tag(skin.id)
+                    }
+                }
+
+                Button {
+                    isImportingManicSkin = true
+                } label: {
+                    Label("Import ManicEMU Skin", systemImage: "square.and.arrow.down")
+                }
+
+                if let selectedSkin = manicSkinStore.selectedSkin {
+                    Text(L10n.format("Using %@ for the virtual Java controls.", selectedSkin.name))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("The built-in phoneME keypad is currently active.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Java Controller Skin")
+            }
+
+            Section {
                 Picker("Data Storage", selection: storageLocationBinding) {
                     ForEach(PhoneMEStorageLocation.allCases) { location in
                         Text(location.title)
@@ -140,6 +171,23 @@ struct SettingsView: View {
             }
 
         }
+        .fileImporter(
+            isPresented: $isImportingManicSkin,
+            allowedContentTypes: [.phoneMEManicSkin],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                do {
+                    _ = try manicSkinStore.importSkin(from: url)
+                } catch {
+                    manicSkinErrorMessage = error.localizedDescription
+                }
+            case .failure(let error):
+                manicSkinErrorMessage = error.localizedDescription
+            }
+        }
         .navigationTitle("Settings")
 #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -149,6 +197,11 @@ struct SettingsView: View {
         } message: {
             Text(storageErrorMessage ?? "")
         }
+        .alert("Java Controller Skin", isPresented: manicSkinErrorBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(manicSkinErrorMessage ?? "")
+        }
         .task {
             session.refreshJITStatus()
         }
@@ -157,6 +210,26 @@ struct SettingsView: View {
                 session.refreshJITStatus()
             }
         }
+    }
+
+    private var manicSkinSelectionBinding: Binding<String> {
+        Binding(
+            get: { manicSkinStore.selectedSkinID ?? "" },
+            set: { value in
+                manicSkinStore.selectSkin(id: value.isEmpty ? nil : value)
+            }
+        )
+    }
+
+    private var manicSkinErrorBinding: Binding<Bool> {
+        Binding(
+            get: { manicSkinErrorMessage != nil },
+            set: { shown in
+                if !shown {
+                    manicSkinErrorMessage = nil
+                }
+            }
+        )
     }
 
     private var jitStatusTitle: String {
@@ -232,6 +305,7 @@ struct SettingsView: View {
                 PhoneMERuntimeResources.configure(
                     storageRootURL: storage.rootURL
                 )
+                manicSkinStore.updateStorageRoot(storage.rootURL)
                 session.resetRuntimeForStorageChange()
                 library.reloadFromStorage()
                 profiles.reloadFromStorage()
@@ -389,4 +463,12 @@ struct ProfilesView: View {
             set: { if !$0 { renamingTemplate = nil } }
         )
     }
+}
+
+
+private extension UTType {
+    static let phoneMEManicSkin = UTType(
+        importedAs: "dev.phoneme.manicskin",
+        conformingTo: .zip
+    )
 }
