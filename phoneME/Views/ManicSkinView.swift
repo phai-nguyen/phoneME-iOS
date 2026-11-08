@@ -8,6 +8,7 @@ struct ManicSkinView<ScreenContent: View>: View {
     let skin: ManicSkin
     private let session: EmulatorSession
     private let screenContent: () -> ScreenContent
+    private let onSpecialAction: (String) -> Void
     @StateObject private var inputCoordinator: ManicSkinInputCoordinator
     @Environment(\.scenePhase) private var scenePhase
     @State private var windowSafeAreaBottom: CGFloat = 0
@@ -16,11 +17,13 @@ struct ManicSkinView<ScreenContent: View>: View {
         skin: ManicSkin,
         session: EmulatorSession,
         hapticStyle: GameProfile.ControllerHapticStyle = .soft,
+        onSpecialAction: @escaping (String) -> Void = { _ in },
         @ViewBuilder screenContent: @escaping () -> ScreenContent
     ) {
         self.skin = skin
         self.session = session
         self.screenContent = screenContent
+        self.onSpecialAction = onSpecialAction
         _inputCoordinator = StateObject(
             wrappedValue: ManicSkinInputCoordinator(
                 session: session,
@@ -119,7 +122,8 @@ struct ManicSkinView<ScreenContent: View>: View {
                         ),
                         animationBeginFrame: animationBeginFrame,
                         animationEndFrame: animationEndFrame,
-                        inputCoordinator: inputCoordinator
+                        inputCoordinator: inputCoordinator,
+                        onSpecialAction: onSpecialAction
                     )
                     .frame(
                         width: max(captureFrame.width, 1),
@@ -287,6 +291,7 @@ private struct ManicSkinItemView: View {
     let animationBeginFrame: CGRect?
     let animationEndFrame: CGRect?
     let inputCoordinator: ManicSkinInputCoordinator
+    let onSpecialAction: (String) -> Void
 
     @State private var isPressed = false
 
@@ -328,6 +333,11 @@ private struct ManicSkinItemView: View {
                         inputCoordinator.prepareHaptic()
                     }
                 )
+            } else if let specialAction = item.specialAction {
+                ManicSkinSwitchCaptureView {
+                    inputCoordinator.triggerHaptic()
+                    onSpecialAction(specialAction)
+                }
             } else if item.isSwitchButton {
                 ManicSkinSwitchCaptureView {
                     activateSwitch()
