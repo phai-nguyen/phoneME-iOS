@@ -1,6 +1,12 @@
 import CryptoKit
 import Foundation
 
+struct ManicSkinAnimation {
+    let type: String
+    let beginFrame: CGRect
+    let endFrame: CGRect
+}
+
 struct ManicSkinItem: Identifiable {
     let id: String
     let frame: CGRect
@@ -13,6 +19,7 @@ struct ManicSkinItem: Identifiable {
     let isTouchScreen: Bool
     let isSwitchButton: Bool
     let selfRetracting: Bool
+    let animation: ManicSkinAnimation?
 
     var hasDirectionalInput: Bool {
         !directionalKeys.isEmpty
@@ -239,6 +246,11 @@ struct ManicSkin: Identifiable {
 
             let inputs = parseInputs(rawItem["inputs"])
             let selfRetracting = rawItem["selfRetracting"] as? Bool ?? true
+            let animation = parseAnimation(
+                rawItem["animation"],
+                mappingSize: mappingSize,
+                placement: placement
+            )
 
             // Artwork-only items remain visible. Touch-screen items are kept
             // even though their x/y inputs are pointer coordinates, not keys.
@@ -262,7 +274,8 @@ struct ManicSkin: Identifiable {
                 thumbstickSize: thumbstickSize,
                 isTouchScreen: inputs.isTouchScreen,
                 isSwitchButton: inputs.isSwitchButton,
-                selfRetracting: selfRetracting
+                selfRetracting: selfRetracting,
+                animation: animation
             ))
         }
 
@@ -336,6 +349,34 @@ struct ManicSkin: Identifiable {
             y: frame.minY - edges.top,
             width: frame.width + edges.left + edges.right,
             height: frame.height + edges.top + edges.bottom
+        )
+    }
+
+    private static func parseAnimation(
+        _ value: Any?,
+        mappingSize: CGSize,
+        placement: String
+    ) -> ManicSkinAnimation? {
+        guard let dictionary = value as? [String: Any],
+              let type = dictionary["type"] as? String,
+              let rawBegin = rawRect(dictionary["begin"]),
+              let rawEnd = rawRect(dictionary["end"]),
+              let begin = normalizedRect(
+                rawBegin,
+                mappingSize: mappingSize,
+                placement: placement
+              ),
+              let end = normalizedRect(
+                rawEnd,
+                mappingSize: mappingSize,
+                placement: placement
+              ) else {
+            return nil
+        }
+        return ManicSkinAnimation(
+            type: type.lowercased(),
+            beginFrame: begin,
+            endFrame: end
         )
     }
 
