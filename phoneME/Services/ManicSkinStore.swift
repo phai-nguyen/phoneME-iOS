@@ -498,7 +498,7 @@ struct ManicSkin: Identifiable {
             // In the ManicEMU/DeltaCore format, an array is a standard button
             // mapping, even when a value happens to be "up" or "left".
             direct = values.compactMap(key(for:))
-            specialAction = values.compactMap(specialAction(for:)).first
+            specialAction = values.compactMap(appAction(for:)).first
         } else if let single = value as? String {
             // A single string is a switch input in the source format.
             isSwitchButton = true
