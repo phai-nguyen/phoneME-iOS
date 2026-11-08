@@ -173,7 +173,7 @@ struct SettingsView: View {
         }
         .fileImporter(
             isPresented: $isImportingManicSkin,
-            allowedContentTypes: [.phoneMEManicSkin],
+            allowedContentTypes: [.item],
             allowsMultipleSelection: false
         ) { result in
             switch result {
