@@ -42,17 +42,11 @@ struct ManicSkinView<ScreenContent: View>: View {
             )
             let mappingWidth = max(layout.mappingSize.width, 1)
             let mappingHeight = max(layout.mappingSize.height, 1)
-            let scale = min(
-                geometry.size.width / mappingWidth,
-                geometry.size.height / mappingHeight
-            )
-            let canvasSize = CGSize(
-                width: mappingWidth * scale,
-                height: mappingHeight * scale
-            )
-            let origin = CGPoint(
-                x: (geometry.size.width - canvasSize.width) / 2,
-                y: (geometry.size.height - canvasSize.height) / 2
+            let canvasSize = geometry.size
+            let origin = CGPoint.zero
+            let canvasScale = CGSize(
+                width: canvasSize.width / mappingWidth,
+                height: canvasSize.height / mappingHeight
             )
             let screenFrame = renderedFrame(
                 layout.screenFrame,
@@ -116,7 +110,7 @@ struct ManicSkinView<ScreenContent: View>: View {
                     }
                     ManicSkinItemView(
                         item: item,
-                        canvasScale: scale,
+                        canvasScale: canvasScale,
                         visualSize: visualFrame.size,
                         visualOrigin: CGPoint(
                             x: visualFrame.minX - captureFrame.minX,
@@ -321,7 +315,7 @@ private final class ManicSkinInputCoordinator: ObservableObject {
 @MainActor
 private struct ManicSkinItemView: View {
     let item: ManicSkinItem
-    let canvasScale: CGFloat
+    let canvasScale: CGSize
     let visualSize: CGSize
     let visualOrigin: CGPoint
     let animationBeginFrame: CGRect?
@@ -770,7 +764,7 @@ private final class ManicSkinImmediatePanGestureRecognizer: UIPanGestureRecogniz
 @MainActor
 private struct ManicSkinThumbstickCaptureView: UIViewRepresentable {
     let item: ManicSkinItem
-    let canvasScale: CGFloat
+    let canvasScale: CGSize
     let onKeysChanged: ([J2MEKey], Bool) -> Void
     let onHaptic: () -> Void
     let onHapticPrepare: () -> Void
@@ -835,7 +829,7 @@ private final class ManicSkinNativeThumbstickView: UIView {
     private let knobImageView = UIImageView()
     private var panGestureRecognizer: ManicSkinImmediatePanGestureRecognizer?
     private var item: ManicSkinItem?
-    private var canvasScale: CGFloat = 1
+    private var canvasScale = CGSize(width: 1, height: 1)
     private var onKeysChanged: (([J2MEKey], Bool) -> Void)?
     private var onHaptic: (() -> Void)?
     private var onHapticPrepare: (() -> Void)?
@@ -906,9 +900,12 @@ private final class ManicSkinNativeThumbstickView: UIView {
 
         let size: CGSize
         if let knob = item?.thumbstickSize {
+            // Thumbstick dimensions are stored in mappingSize pixels.
+            // DeltaCore scales the width and height against the host bounds
+            // independently, just like the controller item frame.
             size = CGSize(
-                width: max(knob.width * canvasScale, 1),
-                height: max(knob.height * canvasScale, 1)
+                width: max(knob.width * canvasScale.width, 1),
+                height: max(knob.height * canvasScale.height, 1)
             )
         } else {
             size = bounds.size
