@@ -228,26 +228,23 @@ struct ManicSkinView<ScreenContent: View>: View {
         mappingSize: CGSize,
         canvasSize: CGSize
     ) -> CGRect {
-        // Restore the pre-486ede2 controller mapping for the analog stick:
-        // one uniform aspect-fit scale and a centered origin. Other skin
-        // items continue using the independent X/Y transform.
-        let uniformScale = min(
-            canvasSize.width / max(mappingSize.width, 1),
-            canvasSize.height / max(mappingSize.height, 1)
-        )
-        let fittedCanvas = CGSize(
-            width: mappingSize.width * uniformScale,
-            height: mappingSize.height * uniformScale
-        )
-        let fittedOrigin = CGPoint(
-            x: (canvasSize.width - fittedCanvas.width) / 2,
-            y: (canvasSize.height - fittedCanvas.height) / 2
+        // Preserve the skin-defined center in the full-window X/Y mapping so
+        // the moving knob remains over its controller position. Only its
+        // dimensions use a uniform scale to prevent ellipse distortion.
+        let scaleX = canvasSize.width / max(mappingSize.width, 1)
+        let scaleY = canvasSize.height / max(mappingSize.height, 1)
+        let uniformScale = min(scaleX, scaleY)
+        let width = normalized.width * mappingSize.width * uniformScale
+        let height = normalized.height * mappingSize.height * uniformScale
+        let center = CGPoint(
+            x: normalized.midX * canvasSize.width,
+            y: normalized.midY * canvasSize.height
         )
         return CGRect(
-            x: fittedOrigin.x + normalized.minX * fittedCanvas.width,
-            y: fittedOrigin.y + normalized.minY * fittedCanvas.height,
-            width: normalized.width * fittedCanvas.width,
-            height: normalized.height * fittedCanvas.height
+            x: center.x - width / 2,
+            y: center.y - height / 2,
+            width: width,
+            height: height
         )
     }
 
@@ -438,6 +435,17 @@ private struct ManicSkinItemView: View {
         let displayedArtworkFrame = artworkFrame
 
         ZStack(alignment: .topLeading) {
+            if item.isThumbstick {
+                Ellipse()
+                    .fill(Color.black)
+                    .frame(width: max(visualSize.width, 1), height: max(visualSize.height, 1))
+                    .position(
+                        x: visualOrigin.x + visualSize.width / 2,
+                        y: visualOrigin.y + visualSize.height / 2
+                    )
+                    .allowsHitTesting(false)
+            }
+
             artwork
                 .frame(
                     width: max(displayedArtworkFrame.width, 1),
@@ -1364,6 +1372,17 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
                             origin: .zero,
                             canvasSize: canvasSize
                         )
+                    if item.isThumbstick {
+                        Ellipse()
+                            .fill(Color.black)
+                            .frame(
+                                width: max(visualFrame.width, 1),
+                                height: max(visualFrame.height, 1)
+                            )
+                            .position(x: visualFrame.midX, y: visualFrame.midY)
+                            .allowsHitTesting(false)
+                    }
+
                     ManicSkinFLEXItemOverlay(
                         item: item,
                         frame: binding(for: item),
@@ -1584,26 +1603,23 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
         mappingSize: CGSize,
         canvasSize: CGSize
     ) -> CGRect {
-        // Restore the pre-486ede2 controller mapping for the analog stick:
-        // one uniform aspect-fit scale and a centered origin. Other skin
-        // items continue using the independent X/Y transform.
-        let uniformScale = min(
-            canvasSize.width / max(mappingSize.width, 1),
-            canvasSize.height / max(mappingSize.height, 1)
-        )
-        let fittedCanvas = CGSize(
-            width: mappingSize.width * uniformScale,
-            height: mappingSize.height * uniformScale
-        )
-        let fittedOrigin = CGPoint(
-            x: (canvasSize.width - fittedCanvas.width) / 2,
-            y: (canvasSize.height - fittedCanvas.height) / 2
+        // Preserve the skin-defined center in the full-window X/Y mapping so
+        // the moving knob remains over its controller position. Only its
+        // dimensions use a uniform scale to prevent ellipse distortion.
+        let scaleX = canvasSize.width / max(mappingSize.width, 1)
+        let scaleY = canvasSize.height / max(mappingSize.height, 1)
+        let uniformScale = min(scaleX, scaleY)
+        let width = normalized.width * mappingSize.width * uniformScale
+        let height = normalized.height * mappingSize.height * uniformScale
+        let center = CGPoint(
+            x: normalized.midX * canvasSize.width,
+            y: normalized.midY * canvasSize.height
         )
         return CGRect(
-            x: fittedOrigin.x + normalized.minX * fittedCanvas.width,
-            y: fittedOrigin.y + normalized.minY * fittedCanvas.height,
-            width: normalized.width * fittedCanvas.width,
-            height: normalized.height * fittedCanvas.height
+            x: center.x - width / 2,
+            y: center.y - height / 2,
+            width: width,
+            height: height
         )
     }
 
