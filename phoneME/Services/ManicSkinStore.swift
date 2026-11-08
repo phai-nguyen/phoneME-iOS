@@ -20,6 +20,7 @@ struct ManicSkinItem: Identifiable {
     let isSwitchButton: Bool
     let selfRetracting: Bool
     let animation: ManicSkinAnimation?
+    let specialAction: String?
 
     var hasDirectionalInput: Bool {
         !directionalKeys.isEmpty
@@ -259,6 +260,7 @@ struct ManicSkin: Identifiable {
                     || !inputs.directionalKeys.isEmpty
                     || inputs.isTouchScreen
                     || inputs.isSwitchButton
+                    || inputs.specialAction != nil
                     || normalURL != nil
                     || selectedURL != nil else {
                 continue
@@ -276,7 +278,8 @@ struct ManicSkin: Identifiable {
                 isTouchScreen: inputs.isTouchScreen,
                 isSwitchButton: inputs.isSwitchButton,
                 selfRetracting: selfRetracting,
-                animation: animation
+                animation: animation,
+                specialAction: inputs.specialAction
             ))
         }
 
@@ -460,12 +463,14 @@ struct ManicSkin: Identifiable {
         directKeys: [J2MEKey],
         directionalKeys: [String: J2MEKey],
         isTouchScreen: Bool,
-        isSwitchButton: Bool
+        isSwitchButton: Bool,
+        specialAction: String?
     ) {
         var direct = [J2MEKey]()
         var directional = [String: J2MEKey]()
         var isTouchScreen = false
         var isSwitchButton = false
+        var specialAction: String?
 
         if let inputs = value as? [String: Any] {
             if inputs["x"] != nil && inputs["y"] != nil {
@@ -474,15 +479,18 @@ struct ManicSkin: Identifiable {
                 isTouchScreen = true
             } else {
                 for (direction, rawValue) in inputs {
-                    guard let rawValue = rawValue as? String,
-                          let key = key(for: rawValue) else {
+                    guard let rawValue = rawValue as? String else {
                         continue
                     }
                     let normalizedDirection = direction.lowercased()
                     if ["up", "down", "left", "right"].contains(normalizedDirection) {
-                        directional[normalizedDirection] = key
-                    } else {
+                        if let key = key(for: rawValue) {
+                            directional[normalizedDirection] = key
+                        }
+                    } else if let key = key(for: rawValue) {
                         direct.append(key)
+                    } else if let action = specialAction(for: rawValue) {
+                        specialAction = action
                     }
                 }
             }
@@ -490,17 +498,28 @@ struct ManicSkin: Identifiable {
             // In the ManicEMU/DeltaCore format, an array is a standard button
             // mapping, even when a value happens to be "up" or "left".
             direct = values.compactMap(key(for:))
-        } else if value is String {
+            specialAction = values.compactMap(specialAction(for:)).first
+        } else if let single = value as? String {
             // A single string is a switch input in the source format.
             isSwitchButton = true
-            if let value = value as? String, let key = key(for: value) {
+            if let key = key(for: single) {
                 direct = [key]
+            } else {
+                specialAction = specialAction(for: single)
             }
         }
 
         var seen = Set<J2MEKey>()
         direct = direct.filter { seen.insert($0).inserted }
-        return (direct, directional, isTouchScreen, isSwitchButton)
+        return (direct, directional, isTouchScreen, isSwitchButton, specialAction)
+    }
+
+    private static func specialAction(for value: String) -> String? {
+        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "menu": return "menu"
+        case "flex": return "flex"
+        default: return nil
+        }
     }
 
     private static func key(for value: String) -> J2MEKey? {
