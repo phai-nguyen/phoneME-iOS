@@ -228,21 +228,26 @@ struct ManicSkinView<ScreenContent: View>: View {
         mappingSize: CGSize,
         canvasSize: CGSize
     ) -> CGRect {
+        // Restore the pre-486ede2 controller mapping for the analog stick:
+        // one uniform aspect-fit scale and a centered origin. Other skin
+        // items continue using the independent X/Y transform.
         let uniformScale = min(
             canvasSize.width / max(mappingSize.width, 1),
             canvasSize.height / max(mappingSize.height, 1)
         )
-        let width = normalized.width * mappingSize.width * uniformScale
-        let height = normalized.height * mappingSize.height * uniformScale
-        let center = CGPoint(
-            x: normalized.midX * canvasSize.width,
-            y: normalized.midY * canvasSize.height
+        let fittedCanvas = CGSize(
+            width: mappingSize.width * uniformScale,
+            height: mappingSize.height * uniformScale
+        )
+        let fittedOrigin = CGPoint(
+            x: (canvasSize.width - fittedCanvas.width) / 2,
+            y: (canvasSize.height - fittedCanvas.height) / 2
         )
         return CGRect(
-            x: center.x - width / 2,
-            y: center.y - height / 2,
-            width: width,
-            height: height
+            x: fittedOrigin.x + normalized.minX * fittedCanvas.width,
+            y: fittedOrigin.y + normalized.minY * fittedCanvas.height,
+            width: normalized.width * fittedCanvas.width,
+            height: normalized.height * fittedCanvas.height
         )
     }
 
@@ -466,6 +471,11 @@ private struct ManicSkinItemView: View {
                     onHapticPrepare: {
                         inputCoordinator.prepareHaptic()
                     }
+                )
+                .frame(width: visualSize.width, height: visualSize.height)
+                .position(
+                    x: visualOrigin.x + visualSize.width / 2,
+                    y: visualOrigin.y + visualSize.height / 2
                 )
             } else if let specialAction = item.specialAction {
                 ManicSkinSwitchCaptureView {
@@ -1014,10 +1024,8 @@ private final class ManicSkinNativeThumbstickView: UIView {
             // Keep the circular joystick knob circular even when the overall
             // skin canvas is non-uniformly stretched to device bounds.
             let uniformScale = min(canvasScale.width, canvasScale.height)
-            size = CGSize(
-                width: max(knob.width * uniformScale, 1),
-                height: max(knob.height * uniformScale, 1)
-            )
+            let diameter = max(min(knob.width, knob.height) * uniformScale, 1)
+            size = CGSize(width: diameter, height: diameter)
         } else {
             size = bounds.size
         }
@@ -1098,7 +1106,8 @@ private final class ManicSkinNativeThumbstickView: UIView {
 
         let center = CGPoint(x: bounds.midX, y: bounds.midY)
         let point = SIMD2(Double(translation.x), Double(translation.y))
-        let maximumDistance = Double(bounds.midX) * 0.8
+        let stickRadius = Double(min(bounds.width, bounds.height)) / 2
+        let maximumDistance = stickRadius * 0.8
         let distance = min(simd_length(point), maximumDistance)
         let angle = atan2(point.y, point.x)
 
@@ -1107,7 +1116,7 @@ private final class ManicSkinNativeThumbstickView: UIView {
         knobCenter = CGPoint(x: adjustedX, y: adjustedY)
         knobImageView.center = knobCenter
 
-        let insetSideLength = Double(bounds.midX)
+        let insetSideLength = stickRadius
         guard insetSideLength > 0 else { return }
 
         let insetMinX = Double(center.x) - insetSideLength / 2
@@ -1358,7 +1367,12 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
                     ManicSkinFLEXItemOverlay(
                         item: item,
                         frame: binding(for: item),
-                        canvasSize: canvasSize,
+                        canvasSize: item.isThumbstick
+                            ? fittedThumbstickCanvasSize(
+                                mappingSize: layout.mappingSize,
+                                canvasSize: canvasSize
+                            )
+                            : canvasSize,
                         isSelected: selectedItemID == item.id,
                         onSelect: {
                             selectedItemID = item.id
@@ -1551,26 +1565,45 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
         }
     }
 
+    private func fittedThumbstickCanvasSize(
+        mappingSize: CGSize,
+        canvasSize: CGSize
+    ) -> CGSize {
+        let scale = min(
+            canvasSize.width / max(mappingSize.width, 1),
+            canvasSize.height / max(mappingSize.height, 1)
+        )
+        return CGSize(
+            width: mappingSize.width * scale,
+            height: mappingSize.height * scale
+        )
+    }
+
     private func renderedThumbstickFrame(
         _ normalized: CGRect,
         mappingSize: CGSize,
         canvasSize: CGSize
     ) -> CGRect {
+        // Restore the pre-486ede2 controller mapping for the analog stick:
+        // one uniform aspect-fit scale and a centered origin. Other skin
+        // items continue using the independent X/Y transform.
         let uniformScale = min(
             canvasSize.width / max(mappingSize.width, 1),
             canvasSize.height / max(mappingSize.height, 1)
         )
-        let width = normalized.width * mappingSize.width * uniformScale
-        let height = normalized.height * mappingSize.height * uniformScale
-        let center = CGPoint(
-            x: normalized.midX * canvasSize.width,
-            y: normalized.midY * canvasSize.height
+        let fittedCanvas = CGSize(
+            width: mappingSize.width * uniformScale,
+            height: mappingSize.height * uniformScale
+        )
+        let fittedOrigin = CGPoint(
+            x: (canvasSize.width - fittedCanvas.width) / 2,
+            y: (canvasSize.height - fittedCanvas.height) / 2
         )
         return CGRect(
-            x: center.x - width / 2,
-            y: center.y - height / 2,
-            width: width,
-            height: height
+            x: fittedOrigin.x + normalized.minX * fittedCanvas.width,
+            y: fittedOrigin.y + normalized.minY * fittedCanvas.height,
+            width: normalized.width * fittedCanvas.width,
+            height: normalized.height * fittedCanvas.height
         )
     }
 
@@ -1767,14 +1800,31 @@ private struct ManicSkinFLEXItemOverlay: View {
                                 guard let start = resizeStartFrame else { return }
                                 let dw = value.translation.width / max(canvasSize.width, 1)
                                 let dh = value.translation.height / max(canvasSize.height, 1)
-                                frame = Self.clamped(
-                                    CGRect(
-                                        x: start.minX,
-                                        y: start.minY,
-                                        width: start.width + dw,
-                                        height: start.height + dh
+                                let proposedWidth = max(start.width + dw, 0.015)
+                                let proposedHeight = max(start.height + dh, 0.015)
+                                if item.isThumbstick {
+                                    let scaleX = proposedWidth / max(start.width, 0.001)
+                                    let scaleY = proposedHeight / max(start.height, 0.001)
+                                    let uniformScale = abs(scaleX - 1) >= abs(scaleY - 1)
+                                        ? scaleX : scaleY
+                                    frame = Self.clamped(
+                                        CGRect(
+                                            x: start.minX,
+                                            y: start.minY,
+                                            width: start.width * uniformScale,
+                                            height: start.height * uniformScale
+                                        )
                                     )
-                                )
+                                } else {
+                                    frame = Self.clamped(
+                                        CGRect(
+                                            x: start.minX,
+                                            y: start.minY,
+                                            width: proposedWidth,
+                                            height: proposedHeight
+                                        )
+                                    )
+                                }
                                 onSelect()
                             }
                             .onEnded { _ in resizeStartFrame = nil }
