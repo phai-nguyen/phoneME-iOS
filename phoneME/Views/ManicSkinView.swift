@@ -30,7 +30,10 @@ struct ManicSkinView<ScreenContent: View>: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let layout = skin.layout(for: geometry.size)
+            let layout = skin.layout(
+                for: geometry.size,
+                safeAreaBottom: geometry.safeAreaInsets.bottom
+            )
             let mappingWidth = max(layout.mappingSize.width, 1)
             let mappingHeight = max(layout.mappingSize.height, 1)
             let scale = min(
@@ -75,18 +78,31 @@ struct ManicSkinView<ScreenContent: View>: View {
                     .clipped()
 
                 ForEach(layout.items) { item in
-                    let frame = renderedFrame(
+                    let visualFrame = renderedFrame(
                         item.frame,
+                        origin: origin,
+                        canvasSize: canvasSize
+                    )
+                    let captureFrame = renderedFrame(
+                        item.hitFrame,
                         origin: origin,
                         canvasSize: canvasSize
                     )
                     ManicSkinItemView(
                         item: item,
                         canvasScale: scale,
+                        visualSize: visualFrame.size,
+                        visualOrigin: CGPoint(
+                            x: visualFrame.minX - captureFrame.minX,
+                            y: visualFrame.minY - captureFrame.minY
+                        ),
                         inputCoordinator: inputCoordinator
                     )
-                    .frame(width: max(frame.width, 1), height: max(frame.height, 1))
-                    .position(x: frame.midX, y: frame.midY)
+                    .frame(
+                        width: max(captureFrame.width, 1),
+                        height: max(captureFrame.height, 1)
+                    )
+                    .position(x: captureFrame.midX, y: captureFrame.midY)
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
@@ -122,6 +138,7 @@ private final class ManicSkinInputCoordinator: ObservableObject {
     private weak var session: EmulatorSession?
     private var keyOwnerCounts: [J2MEKey: Int] = [:]
     private let hapticGenerator: UIImpactFeedbackGenerator?
+    private var activePointer: (x: Int32, y: Int32)?
 
     init(session: EmulatorSession, hapticStyle: GameProfile.ControllerHapticStyle) {
         self.session = session
@@ -179,11 +196,38 @@ private final class ManicSkinInputCoordinator: ObservableObject {
         }
     }
 
+    func sendPointer(normalizedPoint: CGPoint, action: Int32) {
+        guard let session, let frameSize = session.frameStore.frameSize else {
+            return
+        }
+
+        let width = max(Int(frameSize.width.rounded()), 1)
+        let height = max(Int(frameSize.height.rounded()), 1)
+        let normalizedX = min(max(normalizedPoint.x, 0), 1)
+        let normalizedY = min(max(normalizedPoint.y, 0), 1)
+        let x = min(max(Int(normalizedX * CGFloat(width)), 0), width - 1)
+        let y = min(max(Int(normalizedY * CGFloat(height)), 0), height - 1)
+
+        session.sendPointer(x: Int32(x), y: Int32(y), action: action)
+        if action == 2 {
+            activePointer = nil
+        } else {
+            activePointer = (Int32(x), Int32(y))
+        }
+    }
+
     func releaseAll() {
         guard let session else {
+            activePointer = nil
             keyOwnerCounts.removeAll()
             return
         }
+
+        if let pointer = activePointer {
+            session.sendPointer(x: pointer.x, y: pointer.y, action: 2)
+            activePointer = nil
+        }
+
         let keys = keyOwnerCounts.keys.sorted { $0.rawValue < $1.rawValue }
         keyOwnerCounts.removeAll()
         for key in keys {
@@ -196,13 +240,35 @@ private final class ManicSkinInputCoordinator: ObservableObject {
 private struct ManicSkinItemView: View {
     let item: ManicSkinItem
     let canvasScale: CGFloat
+    let visualSize: CGSize
+    let visualOrigin: CGPoint
     let inputCoordinator: ManicSkinInputCoordinator
 
     @State private var isPressed = false
 
     var body: some View {
-        Group {
-            if item.isThumbstick {
+        ZStack(alignment: .topLeading) {
+            artwork
+                .frame(
+                    width: max(visualSize.width, 1),
+                    height: max(visualSize.height, 1)
+                )
+                .position(
+                    x: visualOrigin.x + visualSize.width / 2,
+                    y: visualOrigin.y + visualSize.height / 2
+                )
+
+            if item.isTouchScreen {
+                ManicSkinTouchscreenCaptureView(
+                    onPointer: { point, action in
+                        inputCoordinator.sendPointer(
+                            normalizedPoint: point,
+                            action: action
+                        )
+                    },
+                    onPressedChanged: { isPressed = $0 }
+                )
+            } else if item.isThumbstick {
                 ManicSkinThumbstickCaptureView(
                     item: item,
                     canvasScale: canvasScale,
@@ -217,29 +283,30 @@ private struct ManicSkinItemView: View {
                     }
                 )
             } else {
-                ZStack {
-                    if isPressed,
-                       let selectedURL = item.selectedAssetURL,
-                       let image = ManicSkinPDFRenderer.image(at: selectedURL) {
-                        Image(uiImage: image)
-                            .resizable()
-                            .interpolation(.high)
-                            .scaledToFit()
-                    } else if let normalURL = item.normalAssetURL,
-                              let image = ManicSkinPDFRenderer.image(at: normalURL) {
-                        Image(uiImage: image)
-                            .resizable()
-                            .interpolation(.high)
-                            .scaledToFit()
-                    }
-
-                    ManicSkinTouchCaptureView(item: item) { keys, pressed in
-                        isPressed = pressed
-                        inputCoordinator.update(keys: keys, pressed: pressed)
-                    }
+                ManicSkinTouchCaptureView(item: item) { keys, pressed in
+                    isPressed = pressed
+                    inputCoordinator.update(keys: keys, pressed: pressed)
                 }
-                .contentShape(Rectangle())
             }
+        }
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var artwork: some View {
+        if isPressed,
+           let selectedURL = item.selectedAssetURL,
+           let image = ManicSkinPDFRenderer.image(at: selectedURL) {
+            Image(uiImage: image)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+        } else if let normalURL = item.normalAssetURL,
+                  let image = ManicSkinPDFRenderer.image(at: normalURL) {
+            Image(uiImage: image)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
         }
     }
 }
@@ -345,31 +412,168 @@ private final class ManicSkinNativeTouchView: UIView {
     }
 
     private func keys(at point: CGPoint, item: ManicSkinItem) -> [J2MEKey] {
-        guard bounds.width > 0, bounds.height > 0 else { return [] }
-        guard item.hasDirectionalInput else { return item.directKeys }
-
-        let x = min(max(point.x / bounds.width, 0), 1)
-        let y = min(max(point.y / bounds.height, 0), 1)
-        var directions = [String]()
-
-        if x < 0.34 {
-            directions.append("left")
-        } else if x > 0.66 {
-            directions.append("right")
-        }
-        if y < 0.34 {
-            directions.append("up")
-        } else if y > 0.66 {
-            directions.append("down")
-        }
-
-        if directions.isEmpty {
+        guard bounds.width > 0, bounds.height > 0,
+              bounds.contains(point) else {
             return []
         }
+        guard item.hasDirectionalInput else {
+            return item.directKeys
+        }
+        guard item.hitFrame.width > 0, item.hitFrame.height > 0 else {
+            return []
+        }
+
+        // Convert the item's artwork frame into this (possibly expanded)
+        // capture view's local coordinates, preserving DeltaCore's geometry.
+        let itemFrame = CGRect(
+            x: (item.frame.minX - item.hitFrame.minX)
+                / item.hitFrame.width * bounds.width,
+            y: (item.frame.minY - item.hitFrame.minY)
+                / item.hitFrame.height * bounds.height,
+            width: item.frame.width / item.hitFrame.width * bounds.width,
+            height: item.frame.height / item.hitFrame.height * bounds.height
+        )
+        let thirdWidth = itemFrame.width / 3
+        let thirdHeight = itemFrame.height / 3
+        let topRect = CGRect(
+            x: 0,
+            y: 0,
+            width: bounds.width,
+            height: thirdHeight + itemFrame.minY
+        )
+        let bottomRect = CGRect(
+            x: 0,
+            y: itemFrame.maxY - thirdHeight,
+            width: bounds.width,
+            height: thirdHeight + (bounds.maxY - itemFrame.maxY)
+        )
+        let leftRect = CGRect(
+            x: 0,
+            y: 0,
+            width: thirdWidth + itemFrame.minX,
+            height: bounds.height
+        )
+        let rightRect = CGRect(
+            x: itemFrame.maxX - thirdWidth,
+            y: 0,
+            width: thirdWidth + (bounds.maxX - itemFrame.maxX),
+            height: bounds.height
+        )
+
+        var directions = [String]()
+        if topRect.contains(point) { directions.append("up") }
+        if bottomRect.contains(point) { directions.append("down") }
+        if leftRect.contains(point) { directions.append("left") }
+        if rightRect.contains(point) { directions.append("right") }
 
         var seen = Set<J2MEKey>()
         return directions.compactMap { item.directionalKeys[$0] }
             .filter { seen.insert($0).inserted }
+    }
+}
+
+@MainActor
+private struct ManicSkinTouchscreenCaptureView: UIViewRepresentable {
+    let onPointer: (CGPoint, Int32) -> Void
+    let onPressedChanged: (Bool) -> Void
+
+    func makeUIView(context: Context) -> ManicSkinNativeTouchscreenView {
+        let view = ManicSkinNativeTouchscreenView()
+        view.onPointer = onPointer
+        view.onPressedChanged = onPressedChanged
+        return view
+    }
+
+    func updateUIView(
+        _ view: ManicSkinNativeTouchscreenView,
+        context: Context
+    ) {
+        view.onPointer = onPointer
+        view.onPressedChanged = onPressedChanged
+    }
+
+    static func dismantleUIView(
+        _ view: ManicSkinNativeTouchscreenView,
+        coordinator: ()
+    ) {
+        view.releaseActiveTouch()
+    }
+}
+
+@MainActor
+private final class ManicSkinNativeTouchscreenView: UIView {
+    var onPointer: ((CGPoint, Int32) -> Void)?
+    var onPressedChanged: ((Bool) -> Void)?
+
+    private var activeTouchID: ObjectIdentifier?
+    private var lastNormalizedPoint = CGPoint.zero
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isOpaque = false
+        isMultipleTouchEnabled = false
+        isUserInteractionEnabled = true
+        accessibilityTraits = .allowsDirectInteraction
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        backgroundColor = .clear
+        isMultipleTouchEnabled = false
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil {
+            releaseActiveTouch()
+        }
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard activeTouchID == nil, let touch = touches.first else { return }
+        activeTouchID = ObjectIdentifier(touch)
+        send(touch.location(in: self), action: 1)
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = activeTouch(in: touches) else { return }
+        send(touch.location(in: self), action: 3)
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = activeTouch(in: touches) else { return }
+        send(touch.location(in: self), action: 2)
+        activeTouchID = nil
+        onPressedChanged?(false)
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        releaseActiveTouch()
+    }
+
+    func releaseActiveTouch() {
+        guard activeTouchID != nil else { return }
+        onPointer?(lastNormalizedPoint, 2)
+        activeTouchID = nil
+        onPressedChanged?(false)
+    }
+
+    private func activeTouch(in touches: Set<UITouch>) -> UITouch? {
+        guard let activeTouchID else { return nil }
+        return touches.first { ObjectIdentifier($0) == activeTouchID }
+    }
+
+    private func send(_ point: CGPoint, action: Int32) {
+        let width = max(bounds.width, 1)
+        let height = max(bounds.height, 1)
+        let normalized = CGPoint(
+            x: min(max(point.x / width, 0), 1),
+            y: min(max(point.y / height, 0), 1)
+        )
+        lastNormalizedPoint = normalized
+        onPointer?(normalized, action)
+        onPressedChanged?(action != 2)
     }
 }
 
