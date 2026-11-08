@@ -10,7 +10,9 @@ struct ManicSkinView<ScreenContent: View>: View {
     private let screenContent: () -> ScreenContent
     private let onSpecialAction: (String) -> Void
     @StateObject private var inputCoordinator: ManicSkinInputCoordinator
+    @EnvironmentObject private var manicSkinStore: ManicSkinStore
     @Environment(\.scenePhase) private var scenePhase
+    @State private var showsFlexEditor = false
     private let usesEdgeToEdge: Bool
 
     init(
@@ -136,7 +138,7 @@ struct ManicSkinView<ScreenContent: View>: View {
                         animationBeginFrame: animationBeginFrame,
                         animationEndFrame: animationEndFrame,
                         inputCoordinator: inputCoordinator,
-                        onSpecialAction: onSpecialAction
+                        onSpecialAction: handleSpecialAction
                     )
                     .frame(
                         width: max(captureFrame.width, 1),
@@ -148,6 +150,22 @@ struct ManicSkinView<ScreenContent: View>: View {
             .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
         }
+        .overlay {
+            if showsFlexEditor {
+                ManicSkinFlexEditorView(
+                    skin: skin,
+                    usesEdgeToEdge: usesEdgeToEdge,
+                    onClose: {
+                        showsFlexEditor = false
+                    }
+                ) {
+                    screenContent()
+                }
+                .environmentObject(manicSkinStore)
+                .transition(.opacity)
+                .zIndex(1000)
+            }
+        }
         .onChange(of: scenePhase) { phase in
             if phase != .active {
                 inputCoordinator.releaseAll()
@@ -157,6 +175,15 @@ struct ManicSkinView<ScreenContent: View>: View {
             inputCoordinator.releaseAll()
         }
         .accessibilityLabel(L10n.string("ManicEMU Java controller skin"))
+    }
+
+    private func handleSpecialAction(_ action: String) {
+        if action == "flex" {
+            inputCoordinator.releaseAll()
+            showsFlexEditor = true
+        } else {
+            onSpecialAction(action)
+        }
     }
 
     private func renderedFrame(
@@ -1145,5 +1172,524 @@ private enum ManicSkinPDFRenderer {
         }
         cache.setObject(image, forKey: key)
         return image
+    }
+}
+
+
+private enum ManicSkinFLEXPage: String {
+    case screen
+    case buttons
+}
+
+@MainActor
+private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
+    @EnvironmentObject private var store: ManicSkinStore
+
+    let skin: ManicSkin
+    let usesEdgeToEdge: Bool
+    let onClose: () -> Void
+    private let screenContent: () -> ScreenContent
+
+    @State private var page: ManicSkinFLEXPage = .buttons
+    @State private var itemFrames: [String: CGRect] = [:]
+    @State private var screenFrame: CGRect = .zero
+    @State private var selectedItemID: String?
+    @State private var loadedRepresentationKey: String?
+    @State private var saveError: String?
+
+    init(
+        skin: ManicSkin,
+        usesEdgeToEdge: Bool,
+        onClose: @escaping () -> Void,
+        @ViewBuilder screenContent: @escaping () -> ScreenContent
+    ) {
+        self.skin = skin
+        self.usesEdgeToEdge = usesEdgeToEdge
+        self.onClose = onClose
+        self.screenContent = screenContent
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let layout = skin.layout(
+                for: geometry.size,
+                usesEdgeToEdge: usesEdgeToEdge
+            )
+            let canvasSize = geometry.size
+            let mappingSize = CGSize(
+                width: max(layout.mappingSize.width, 1),
+                height: max(layout.mappingSize.height, 1)
+            )
+            let screenScale = min(
+                canvasSize.width / mappingSize.width,
+                canvasSize.height / mappingSize.height
+            )
+            let screenCanvasSize = CGSize(
+                width: mappingSize.width * screenScale,
+                height: mappingSize.height * screenScale
+            )
+            let screenOrigin = CGPoint(
+                x: (canvasSize.width - screenCanvasSize.width) / 2,
+                y: (canvasSize.height - screenCanvasSize.height) / 2
+            )
+            let displayedScreenFrame = renderedFrame(
+                screenFrame == .zero ? layout.screenFrame : screenFrame,
+                origin: screenOrigin,
+                canvasSize: screenCanvasSize
+            )
+
+            ZStack(alignment: .topLeading) {
+                Color.black
+
+                if let backgroundURL = layout.backgroundAssetURL,
+                   let image = ManicSkinPDFRenderer.image(at: backgroundURL) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: canvasSize.width, height: canvasSize.height)
+                        .position(
+                            x: canvasSize.width / 2,
+                            y: canvasSize.height / 2
+                        )
+                }
+
+                screenContent()
+                    .frame(
+                        width: max(displayedScreenFrame.width, 1),
+                        height: max(displayedScreenFrame.height, 1)
+                    )
+                    .position(
+                        x: displayedScreenFrame.midX,
+                        y: displayedScreenFrame.midY
+                    )
+                    .clipped()
+                    .opacity(page == .screen ? 1 : 0.24)
+                    .allowsHitTesting(false)
+
+                if page == .screen {
+                    ManicSkinFLEXScreenOverlay(
+                        frame: $screenFrame,
+                        canvasSize: screenCanvasSize,
+                        origin: screenOrigin
+                    )
+                    .zIndex(20)
+                }
+
+                ForEach(layout.items) { item in
+                    let normalizedFrame = itemFrames[item.id] ?? item.frame
+                    let visualFrame = renderedFrame(
+                        normalizedFrame,
+                        origin: .zero,
+                        canvasSize: canvasSize
+                    )
+                    ManicSkinFLEXItemOverlay(
+                        item: item,
+                        frame: binding(for: item),
+                        canvasSize: canvasSize,
+                        isSelected: selectedItemID == item.id,
+                        onSelect: {
+                            selectedItemID = item.id
+                        }
+                    )
+                    .frame(
+                        width: max(visualFrame.width, 1),
+                        height: max(visualFrame.height, 1)
+                    )
+                    .position(x: visualFrame.midX, y: visualFrame.midY)
+                    .opacity(page == .buttons ? 1 : 0.2)
+                    .allowsHitTesting(page == .buttons)
+                    .zIndex(selectedItemID == item.id ? 30 : 10)
+                }
+
+                VStack(spacing: 0) {
+                    toolbar(layout: layout)
+                    Spacer(minLength: 0)
+                    instruction(layout: layout)
+                }
+                .frame(width: canvasSize.width, height: canvasSize.height)
+                .zIndex(100)
+            }
+            .frame(width: canvasSize.width, height: canvasSize.height)
+            .clipped()
+            .onAppear {
+                loadFrames(from: layout)
+            }
+            .onChange(of: layout.representationKey) { _ in
+                loadFrames(from: layout)
+            }
+        }
+        .background(Color.black)
+        .accessibilityLabel("ManicEMU FLEX skin editor")
+        .alert(
+            "Không thể lưu FLEX",
+            isPresented: Binding(
+                get: { saveError != nil },
+                set: { visible in
+                    if !visible { saveError = nil }
+                }
+            )
+        ) {
+            Button("Đóng", role: .cancel) {
+                saveError = nil
+            }
+        } message: {
+            Text(saveError ?? "")
+        }
+    }
+
+    private func toolbar(layout: ManicSkinLayout) -> some View {
+        HStack(spacing: 10) {
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .bold))
+                    .frame(width: 38, height: 38)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .accessibilityLabel("Đóng FLEX")
+
+            Spacer(minLength: 4)
+
+            Button {
+                page = .screen
+                selectedItemID = nil
+            } label: {
+                Text("Màn hình")
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .foregroundStyle(page == .screen ? .black : .white)
+                    .background(
+                        page == .screen ? Color.cyan : Color.white.opacity(0.12),
+                        in: Capsule()
+                    )
+            }
+
+            Button {
+                page = .buttons
+                if selectedItemID == nil {
+                    selectedItemID = layout.items.first?.id
+                }
+            } label: {
+                Text("Nút")
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .foregroundStyle(page == .buttons ? .black : .white)
+                    .background(
+                        page == .buttons ? Color.cyan : Color.white.opacity(0.12),
+                        in: Capsule()
+                    )
+            }
+
+            Button {
+                restoreOriginalFrames(layout: layout)
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 36, height: 36)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .accessibilityLabel("Khôi phục bố cục ban đầu")
+
+            Button {
+                save(layout: layout)
+            } label: {
+                Text("Lưu")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.green, in: Capsule())
+            }
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 9)
+        .background(.ultraThinMaterial)
+    }
+
+    private func instruction(layout: ManicSkinLayout) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: page == .screen ? "rectangle.resize" : "hand.draw")
+                .font(.system(size: 13, weight: .semibold))
+            Text(
+                page == .screen
+                    ? "Kéo khung để di chuyển · Kéo góc để thay đổi kích thước"
+                    : "Chọn và kéo nút · Kéo góc dưới phải để thay đổi kích thước"
+            )
+            .font(.system(size: 12, weight: .medium))
+            Spacer(minLength: 0)
+            if page == .buttons, let selectedItemID,
+               let selected = layout.items.first(where: { $0.id == selectedItemID }) {
+                Text(selected.specialAction ?? selected.id)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.cyan)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+    }
+
+    private func binding(for item: ManicSkinItem) -> Binding<CGRect> {
+        Binding(
+            get: { itemFrames[item.id] ?? item.frame },
+            set: { itemFrames[item.id] = $0 }
+        )
+    }
+
+    private func loadFrames(from layout: ManicSkinLayout) {
+        guard loadedRepresentationKey != layout.representationKey else { return }
+        loadedRepresentationKey = layout.representationKey
+        itemFrames = Dictionary(
+            uniqueKeysWithValues: layout.items.map { ($0.id, $0.frame) }
+        )
+        screenFrame = layout.screenFrame
+        selectedItemID = layout.items.first?.id
+    }
+
+    private func restoreOriginalFrames(layout: ManicSkinLayout) {
+        itemFrames = Dictionary(
+            uniqueKeysWithValues: layout.items.map { ($0.id, $0.frame) }
+        )
+        screenFrame = layout.screenFrame
+        selectedItemID = layout.items.first?.id
+    }
+
+    private func save(layout: ManicSkinLayout) {
+        do {
+            try store.saveLayoutChanges(
+                for: skin,
+                layout: layout,
+                itemFrames: itemFrames,
+                screenFrame: screenFrame == .zero ? layout.screenFrame : screenFrame
+            )
+            onClose()
+        } catch {
+            saveError = error.localizedDescription
+        }
+    }
+
+    private func renderedFrame(
+        _ normalized: CGRect,
+        origin: CGPoint,
+        canvasSize: CGSize
+    ) -> CGRect {
+        CGRect(
+            x: origin.x + normalized.minX * canvasSize.width,
+            y: origin.y + normalized.minY * canvasSize.height,
+            width: normalized.width * canvasSize.width,
+            height: normalized.height * canvasSize.height
+        )
+    }
+}
+
+@MainActor
+private struct ManicSkinFLEXScreenOverlay: View {
+    @Binding var frame: CGRect
+    let canvasSize: CGSize
+    let origin: CGPoint
+
+    @State private var moveStartFrame: CGRect?
+    @State private var resizeStartFrame: CGRect?
+
+    var body: some View {
+        let rect = CGRect(
+            x: origin.x + frame.minX * canvasSize.width,
+            y: origin.y + frame.minY * canvasSize.height,
+            width: frame.width * canvasSize.width,
+            height: frame.height * canvasSize.height
+        )
+
+        ZStack {
+            Rectangle()
+                .fill(Color.cyan.opacity(0.08))
+            Rectangle()
+                .stroke(Color.cyan, style: StrokeStyle(lineWidth: 2, dash: [8, 5]))
+            VStack {
+                HStack {
+                    Text("JAVA SCREEN")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(Color.cyan, in: Capsule())
+                        .foregroundStyle(.black)
+                    Spacer()
+                }
+                Spacer()
+            }
+            .padding(5)
+        }
+        .frame(width: max(rect.width, 1), height: max(rect.height, 1))
+        .position(x: rect.midX, y: rect.midY)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                .onChanged { value in
+                    if moveStartFrame == nil { moveStartFrame = frame }
+                    guard let start = moveStartFrame else { return }
+                    let dx = value.translation.width / max(canvasSize.width, 1)
+                    let dy = value.translation.height / max(canvasSize.height, 1)
+                    frame = Self.clamped(
+                        CGRect(
+                            x: start.minX + dx,
+                            y: start.minY + dy,
+                            width: start.width,
+                            height: start.height
+                        )
+                    )
+                }
+                .onEnded { _ in moveStartFrame = nil }
+        )
+        .overlay(alignment: .bottomTrailing) {
+            Circle()
+                .fill(Color.cyan)
+                .frame(width: 28, height: 28)
+                .overlay {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.black)
+                }
+                .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                .offset(x: 12, y: 12)
+                .gesture(
+                    DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                        .onChanged { value in
+                            if resizeStartFrame == nil { resizeStartFrame = frame }
+                            guard let start = resizeStartFrame else { return }
+                            let dw = value.translation.width / max(canvasSize.width, 1)
+                            let dh = value.translation.height / max(canvasSize.height, 1)
+                            frame = Self.clamped(
+                                CGRect(
+                                    x: start.minX,
+                                    y: start.minY,
+                                    width: start.width + dw,
+                                    height: start.height + dh
+                                )
+                            )
+                        }
+                        .onEnded { _ in resizeStartFrame = nil }
+                )
+        }
+    }
+
+    private static func clamped(_ proposed: CGRect) -> CGRect {
+        let width = min(max(proposed.width, 0.06), 1.5)
+        let height = min(max(proposed.height, 0.06), 1.5)
+        return CGRect(
+            x: min(max(proposed.minX, 0), max(1 - width, 0)),
+            y: min(max(proposed.minY, 0), max(1 - height, 0)),
+            width: width,
+            height: height
+        )
+    }
+}
+
+@MainActor
+private struct ManicSkinFLEXItemOverlay: View {
+    let item: ManicSkinItem
+    @Binding var frame: CGRect
+    let canvasSize: CGSize
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    @State private var moveStartFrame: CGRect?
+    @State private var resizeStartFrame: CGRect?
+
+    var body: some View {
+        ZStack {
+            if let assetURL = item.normalAssetURL,
+               let image = ManicSkinPDFRenderer.image(at: assetURL) {
+                Image(uiImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+            } else {
+                Rectangle()
+                    .fill(Color.white.opacity(0.12))
+                    .overlay {
+                        Text(item.specialAction ?? (item.isThumbstick ? "STICK" : "KEY"))
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+            }
+
+            Rectangle()
+                .stroke(
+                    isSelected ? Color.cyan : Color.white.opacity(0.35),
+                    style: StrokeStyle(
+                        lineWidth: isSelected ? 2 : 1,
+                        dash: isSelected ? [] : [4, 4]
+                    )
+                )
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
+        .gesture(
+            DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                .onChanged { value in
+                    onSelect()
+                    if moveStartFrame == nil { moveStartFrame = frame }
+                    guard let start = moveStartFrame else { return }
+                    let dx = value.translation.width / max(canvasSize.width, 1)
+                    let dy = value.translation.height / max(canvasSize.height, 1)
+                    frame = Self.clamped(
+                        CGRect(
+                            x: start.minX + dx,
+                            y: start.minY + dy,
+                            width: start.width,
+                            height: start.height
+                        )
+                    )
+                }
+                .onEnded { _ in moveStartFrame = nil }
+        )
+        .overlay(alignment: .bottomTrailing) {
+            if isSelected {
+                Circle()
+                    .fill(Color.cyan)
+                    .frame(width: 25, height: 25)
+                    .overlay {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.black)
+                    }
+                    .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                    .offset(x: 11, y: 11)
+                    .gesture(
+                        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                            .onChanged { value in
+                                if resizeStartFrame == nil { resizeStartFrame = frame }
+                                guard let start = resizeStartFrame else { return }
+                                let dw = value.translation.width / max(canvasSize.width, 1)
+                                let dh = value.translation.height / max(canvasSize.height, 1)
+                                frame = Self.clamped(
+                                    CGRect(
+                                        x: start.minX,
+                                        y: start.minY,
+                                        width: start.width + dw,
+                                        height: start.height + dh
+                                    )
+                                )
+                                onSelect()
+                            }
+                            .onEnded { _ in resizeStartFrame = nil }
+                    )
+            }
+        }
+    }
+
+    private static func clamped(_ proposed: CGRect) -> CGRect {
+        let width = min(max(proposed.width, 0.015), 1.5)
+        let height = min(max(proposed.height, 0.015), 1.5)
+        return CGRect(
+            x: min(max(proposed.minX, 0), max(1 - width, 0)),
+            y: min(max(proposed.minY, 0), max(1 - height, 0)),
+            width: width,
+            height: height
+        )
     }
 }
