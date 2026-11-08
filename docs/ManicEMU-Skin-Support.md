@@ -8,7 +8,7 @@ The importer reads the flat ZIP archive and its `info.json` file. It selects the
 
 - `gameTypeIdentifier` to accept Java ME skins only (`public.aoshuang.game.j2me`);
 - `mappingSize` to convert skin coordinates into normalized layout coordinates;
-- the first screen's `outputFrame` as the phoneME Java display viewport;
+- the first screen's `outputFrame` as the phoneME Java display viewport. Pixel-based frames exported by RetroSkinner are normalized against `mappingSize`; already-normalized frames are retained;
 - `assets.resizable` as the skin background;
 - `items[].frame`, `items[].asset.normal`, `items[].asset.selected`, and `items[].inputs` for touch controls.
 
@@ -16,7 +16,7 @@ The first implementation maps standard Java ME directions, Fire, Soft Left/Right
 
 ## Import and storage
 
-In phoneME Settings, select **Java Controller Skin → Import ManicEMU Skin**. Imported skin assets are extracted into the active phoneME data root under `skins/<sha256>/`; the original archive is not modified. The selected skin is stored in app preferences. Switching to the built-in keypad does not delete imported skins.
+In phoneME Settings, select **Java Controller Skin → Import ManicEMU Skin**. The document picker accepts a file selection generically because some iOS Files providers do not resolve the custom `.manicskin` UTI in their type filter; phoneME then validates the ZIP structure and J2ME `info.json` before importing. Imported skin assets are extracted into the active phoneME data root under `skins/<sha256>/`; the original archive is not modified. The selected skin is stored in app preferences. Switching to the built-in keypad does not delete imported skins.
 
 The importer accepts non-encrypted ZIP entries using Stored or Deflate compression, checks CRC-32, rejects path traversal and non-flat file paths, limits archive size to 32 MiB, expanded supported assets to 64 MiB, and accepts up to 512 entries.
 
