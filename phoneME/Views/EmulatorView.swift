@@ -186,7 +186,14 @@ struct EmulatorView: View {
                                         ManicSkinView(
                                             skin: selectedSkin,
                                             session: session,
-                                            hapticStyle: runtimeProfile.controllerHapticStyle ?? .soft
+                                            hapticStyle: runtimeProfile.controllerHapticStyle ?? .soft,
+                                            onSpecialAction: { action in
+                                                if action == "menu" {
+                                                    toggleAppBarVisibility()
+                                                }
+                                                // "flex" is preserved as an app action but
+                                                // waits for phoneME's skin editor.
+                                            }
                                         ) {
                                             FrameSurface(
                                                 frameStore: session.frameStore,
