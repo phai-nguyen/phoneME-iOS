@@ -47,6 +47,18 @@
                 <string>com.sun.java-archive</string>
             </array>
         </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>ManicEMU Controller Skin</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>dev.phoneme.manicskin</string>
+            </array>
+        </dict>
     </array>
 
     <key>UTExportedTypeDeclarations</key>
