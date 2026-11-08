@@ -8,9 +8,14 @@ struct ManicSkinItem: Identifiable {
     let selectedAssetURL: URL?
     let directKeys: [J2MEKey]
     let directionalKeys: [String: J2MEKey]
+    let thumbstickSize: CGSize?
 
     var hasDirectionalInput: Bool {
         !directionalKeys.isEmpty
+    }
+
+    var isThumbstick: Bool {
+        thumbstickSize != nil && hasDirectionalInput
     }
 }
 
@@ -118,6 +123,16 @@ struct ManicSkin: Identifiable {
             let selectedName = asset["selected"] as? String
             let normalURL = try assetURL(normalName, folderURL: folderURL)
             let selectedURL = try assetURL(selectedName, folderURL: folderURL)
+            let thumbstickSize: CGSize?
+            if let knobWidth = number(thumbstick["width"]),
+               let knobHeight = number(thumbstick["height"]),
+               knobWidth > 0, knobHeight > 0,
+               knobWidth <= mappingSize.width * 2,
+               knobHeight <= mappingSize.height * 2 {
+                thumbstickSize = CGSize(width: knobWidth, height: knobHeight)
+            } else {
+                thumbstickSize = nil
+            }
             let (directKeys, directionalKeys) = parseInputs(rawItem["inputs"])
 
             // Keep visual-only ManicEMU controls (for example the FLEX
@@ -134,7 +149,8 @@ struct ManicSkin: Identifiable {
                 normalAssetURL: normalURL,
                 selectedAssetURL: selectedURL,
                 directKeys: directKeys,
-                directionalKeys: directionalKeys
+                directionalKeys: directionalKeys,
+                thumbstickSize: thumbstickSize
             ))
         }
 

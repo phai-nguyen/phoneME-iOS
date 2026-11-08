@@ -425,3 +425,13 @@
 "Enable JIT" = "Enable JIT";
 "Recheck JIT" = "Recheck JIT";
 "Enable JIT with TrollStore" = "Enable JIT with TrollStore";
+
+
+/* ManicEMU controller haptics */
+"Controller haptic feedback" = "Controller haptic feedback";
+"Controller haptics off" = "Haptics Off";
+"Controller haptics soft" = "Soft Haptics";
+"Controller haptics light" = "Light Haptics";
+"Controller haptics medium" = "Medium Haptics";
+"Controller haptics heavy" = "Heavy Haptics";
+"Controller haptics rigid" = "Rigid Haptics";

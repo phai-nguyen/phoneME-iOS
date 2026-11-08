@@ -278,6 +278,14 @@ struct GameProfileEditorView: View {
             Toggle("Touch input", isOn: $profile.touchInput)
             NativeProfilePicker("J2ME key layout", selection: $profile.keyLayout)
 
+            NativeProfilePicker(
+                "Controller haptic feedback",
+                selection: Binding(
+                    get: { profile.controllerHapticStyle ?? .soft },
+                    set: { profile.controllerHapticStyle = $0 }
+                )
+            )
+
             Button {
                 showKeyMappings = true
             } label: {

@@ -183,7 +183,11 @@ struct EmulatorView: View {
                                     if showKeypad,
                                        keyboardAdjustmentMode == .none,
                                        let selectedSkin = manicSkinStore.selectedSkin {
-                                        ManicSkinView(skin: selectedSkin, session: session) {
+                                        ManicSkinView(
+                                            skin: selectedSkin,
+                                            session: session,
+                                            hapticStyle: runtimeProfile.controllerHapticStyle ?? .soft
+                                        ) {
                                             FrameSurface(
                                                 frameStore: session.frameStore,
                                                 profile: runtimeProfile

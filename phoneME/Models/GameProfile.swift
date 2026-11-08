@@ -328,6 +328,23 @@ struct GameProfile: Codable, Equatable {
         }
     }
 
+    enum ControllerHapticStyle: String, Codable, CaseIterable, Identifiable {
+        case off, soft, light, medium, heavy, rigid
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .off: return L10n.string("Controller haptics off")
+            case .soft: return L10n.string("Controller haptics soft")
+            case .light: return L10n.string("Controller haptics light")
+            case .medium: return L10n.string("Controller haptics medium")
+            case .heavy: return L10n.string("Controller haptics heavy")
+            case .rigid: return L10n.string("Controller haptics rigid")
+            }
+        }
+    }
+
     struct KeyboardTuning: Codable, Equatable {
         var scale = 1.0
         var spacingScale = 1.0
@@ -416,6 +433,8 @@ struct GameProfile: Codable, Equatable {
     var showVirtualKeyboard = true
     var buttonShape: ButtonShape = .roundedRectangle
     var hapticFeedback = false
+    // Optional preserves decoding of older per-game profile JSON files.
+    var controllerHapticStyle: ControllerHapticStyle? = .soft
     var keyboardOpacity = 0.20
     var keyboardBackgroundHex = "F2F2F7"
     var keyboardForegroundHex = "1C1C1E"

@@ -425,3 +425,13 @@
 "Enable JIT" = "Bật JIT";
 "Recheck JIT" = "Kiểm tra lại JIT";
 "Enable JIT with TrollStore" = "Bật JIT bằng TrollStore";
+
+
+/* ManicEMU controller haptics */
+"Controller haptic feedback" = "Rung của tay cầm";
+"Controller haptics off" = "Tắt rung";
+"Controller haptics soft" = "Rung mềm";
+"Controller haptics light" = "Rung nhẹ";
+"Controller haptics medium" = "Rung trung bình";
+"Controller haptics heavy" = "Rung mạnh";
+"Controller haptics rigid" = "Rung cứng";
