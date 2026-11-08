@@ -528,9 +528,13 @@ private struct ManicSkinItemView: View {
 
     @ViewBuilder
     private var artwork: some View {
-        // A ManicEMU thumbstick's image is the movable knob, not a static
-        // background. The native thumbstick view owns its only rendering.
-        if item.isThumbstick {
+        // asset.normal is the optional stationary joystick base. The
+        // thumbstick.name image is rendered only by the moving native knob.
+        // If the skin reuses the same image (or omits a separate base), do not
+        // draw a stationary duplicate underneath the moving knob.
+        if item.isThumbstick,
+           item.thumbstickAssetURL == nil
+                || item.thumbstickAssetURL == item.normalAssetURL {
             EmptyView()
         } else if isPressed,
            let selectedURL = item.selectedAssetURL,
