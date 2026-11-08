@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: phoneme-ios-${{ github.ref }}
+  group: phoneme-ios-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
