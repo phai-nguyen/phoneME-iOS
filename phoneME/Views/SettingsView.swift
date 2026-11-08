@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum AppTheme: String, CaseIterable, Identifiable {
     case light
@@ -172,9 +173,10 @@ struct SettingsView: View {
         }
         .fileImporter(
             isPresented: $isImportingManicSkin,
-            // Some Files providers expose .manicskin as a generic file type.
-            // Accept selectable files here; the ZIP and J2ME metadata are validated by ManicSkinStore.
-            allowedContentTypes: [.item],
+            // .data is the broad regular-file type. The ManicEMU UTI conforms to
+            // public.data; using public.item also includes directories and can
+            // leave some iOS Files providers in browse-only mode.
+            allowedContentTypes: [.data],
             allowsMultipleSelection: false
         ) { result in
             switch result {
@@ -189,6 +191,8 @@ struct SettingsView: View {
                 manicSkinErrorMessage = error.localizedDescription
             }
         }
+        .fileDialogConfirmationLabel(Text("Import"))
+        .fileDialogMessage(Text("Choose a ManicEMU controller skin archive (.manicskin)."))
         .navigationTitle("Settings")
 #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
