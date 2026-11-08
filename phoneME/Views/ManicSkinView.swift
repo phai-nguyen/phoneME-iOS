@@ -11,17 +11,19 @@ struct ManicSkinView<ScreenContent: View>: View {
     private let onSpecialAction: (String) -> Void
     @StateObject private var inputCoordinator: ManicSkinInputCoordinator
     @Environment(\.scenePhase) private var scenePhase
-    @State private var windowSafeAreaBottom: CGFloat = 0
+    private let usesEdgeToEdge: Bool
 
     init(
         skin: ManicSkin,
         session: EmulatorSession,
         hapticStyle: GameProfile.ControllerHapticStyle = .soft,
+        usesEdgeToEdge: Bool = false,
         onSpecialAction: @escaping (String) -> Void = { _ in },
         @ViewBuilder screenContent: @escaping () -> ScreenContent
     ) {
         self.skin = skin
         self.session = session
+        self.usesEdgeToEdge = usesEdgeToEdge
         self.screenContent = screenContent
         self.onSpecialAction = onSpecialAction
         _inputCoordinator = StateObject(
@@ -36,7 +38,7 @@ struct ManicSkinView<ScreenContent: View>: View {
         GeometryReader { geometry in
             let layout = skin.layout(
                 for: geometry.size,
-                safeAreaBottom: max(geometry.safeAreaInsets.bottom, windowSafeAreaBottom)
+                usesEdgeToEdge: usesEdgeToEdge
             )
             let mappingWidth = max(layout.mappingSize.width, 1)
             let mappingHeight = max(layout.mappingSize.height, 1)
@@ -134,14 +136,6 @@ struct ManicSkinView<ScreenContent: View>: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
-            .background(alignment: .topLeading) {
-                ManicSkinWindowSafeAreaReader { bottom in
-                    if abs(windowSafeAreaBottom - bottom) > 0.5 {
-                        windowSafeAreaBottom = bottom
-                    }
-                }
-                .frame(width: 1, height: 1)
-            }
         }
         .onChange(of: scenePhase) { phase in
             if phase != .active {
@@ -454,57 +448,6 @@ private struct ManicSkinItemView: View {
 }
 
 #if os(iOS)
-@MainActor
-private struct ManicSkinWindowSafeAreaReader: UIViewRepresentable {
-    let onChange: (CGFloat) -> Void
-
-    func makeUIView(context: Context) -> ManicSkinWindowSafeAreaView {
-        let view = ManicSkinWindowSafeAreaView()
-        view.onChange = onChange
-        return view
-    }
-
-    func updateUIView(
-        _ view: ManicSkinWindowSafeAreaView,
-        context: Context
-    ) {
-        view.onChange = onChange
-        view.publishSafeArea()
-    }
-}
-
-@MainActor
-private final class ManicSkinWindowSafeAreaView: UIView {
-    var onChange: ((CGFloat) -> Void)?
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .clear
-        isOpaque = false
-        isUserInteractionEnabled = false
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        backgroundColor = .clear
-        isUserInteractionEnabled = false
-    }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        publishSafeArea()
-    }
-
-    override func safeAreaInsetsDidChange() {
-        super.safeAreaInsetsDidChange()
-        publishSafeArea()
-    }
-
-    func publishSafeArea() {
-        onChange?(window?.safeAreaInsets.bottom ?? safeAreaInsets.bottom)
-    }
-}
-
 @MainActor
 private struct ManicSkinTouchCaptureView: UIViewRepresentable {
     let item: ManicSkinItem

@@ -58,8 +58,11 @@ struct ManicSkin: Identifiable {
     private let edgeToEdgePortraitLayout: ManicSkinLayout?
     private let edgeToEdgeLandscapeLayout: ManicSkinLayout?
 
-    func layout(for size: CGSize, safeAreaBottom: CGFloat) -> ManicSkinLayout {
-        let prefersEdgeToEdge = safeAreaBottom > 0.5
+    func layout(for size: CGSize, usesEdgeToEdge: Bool) -> ManicSkinLayout {
+        // The host chooses the representation from its actual presentation mode.
+        // UIWindow.safeAreaInsets also contains the device's home-indicator inset
+        // during a standard presentation, so it must not select Edge-to-Edge.
+        let prefersEdgeToEdge = usesEdgeToEdge
         let isLandscape = size.width > size.height
 
         let preferredPortrait = prefersEdgeToEdge

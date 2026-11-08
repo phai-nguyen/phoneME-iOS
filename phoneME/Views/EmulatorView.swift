@@ -187,6 +187,7 @@ struct EmulatorView: View {
                                             skin: selectedSkin,
                                             session: session,
                                             hapticStyle: runtimeProfile.controllerHapticStyle ?? .soft,
+                                            usesEdgeToEdge: presentsEdgeToEdgeSurface,
                                             onSpecialAction: { action in
                                                 if action == "menu" {
                                                     toggleAppBarVisibility()
