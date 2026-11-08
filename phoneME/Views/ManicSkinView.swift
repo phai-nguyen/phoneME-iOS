@@ -88,6 +88,26 @@ struct ManicSkinView<ScreenContent: View>: View {
                         origin: origin,
                         canvasSize: canvasSize
                     )
+                    let animationBeginFrame = item.animation.map {
+                        renderedFrame($0.beginFrame, origin: origin, canvasSize: canvasSize)
+                    }.map {
+                        CGRect(
+                            x: $0.minX - captureFrame.minX,
+                            y: $0.minY - captureFrame.minY,
+                            width: $0.width,
+                            height: $0.height
+                        )
+                    }
+                    let animationEndFrame = item.animation.map {
+                        renderedFrame($0.endFrame, origin: origin, canvasSize: canvasSize)
+                    }.map {
+                        CGRect(
+                            x: $0.minX - captureFrame.minX,
+                            y: $0.minY - captureFrame.minY,
+                            width: $0.width,
+                            height: $0.height
+                        )
+                    }
                     ManicSkinItemView(
                         item: item,
                         canvasScale: scale,
@@ -96,6 +116,8 @@ struct ManicSkinView<ScreenContent: View>: View {
                             x: visualFrame.minX - captureFrame.minX,
                             y: visualFrame.minY - captureFrame.minY
                         ),
+                        animationBeginFrame: animationBeginFrame,
+                        animationEndFrame: animationEndFrame,
                         inputCoordinator: inputCoordinator
                     )
                     .frame(
@@ -196,6 +218,17 @@ private final class ManicSkinInputCoordinator: ObservableObject {
         }
     }
 
+    func pulse(keys: [J2MEKey]) {
+        guard !keys.isEmpty else { return }
+        update(keys: keys, pressed: true)
+
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard let self else { return }
+            self.update(keys: keys, pressed: false, haptic: false)
+        }
+    }
+
     func sendPointer(normalizedPoint: CGPoint, action: Int32) {
         guard let session, let frameSize = session.frameStore.frameSize else {
             return
@@ -242,20 +275,24 @@ private struct ManicSkinItemView: View {
     let canvasScale: CGFloat
     let visualSize: CGSize
     let visualOrigin: CGPoint
+    let animationBeginFrame: CGRect?
+    let animationEndFrame: CGRect?
     let inputCoordinator: ManicSkinInputCoordinator
 
     @State private var isPressed = false
 
     var body: some View {
+        let displayedArtworkFrame = artworkFrame
+
         ZStack(alignment: .topLeading) {
             artwork
                 .frame(
-                    width: max(visualSize.width, 1),
-                    height: max(visualSize.height, 1)
+                    width: max(displayedArtworkFrame.width, 1),
+                    height: max(displayedArtworkFrame.height, 1)
                 )
                 .position(
-                    x: visualOrigin.x + visualSize.width / 2,
-                    y: visualOrigin.y + visualSize.height / 2
+                    x: displayedArtworkFrame.midX,
+                    y: displayedArtworkFrame.midY
                 )
 
             if item.isTouchScreen {
@@ -282,6 +319,10 @@ private struct ManicSkinItemView: View {
                         inputCoordinator.prepareHaptic()
                     }
                 )
+            } else if item.isSwitchButton {
+                ManicSkinSwitchCaptureView {
+                    activateSwitch()
+                }
             } else {
                 ManicSkinTouchCaptureView(item: item) { keys, pressed in
                     isPressed = pressed
@@ -290,6 +331,46 @@ private struct ManicSkinItemView: View {
             }
         }
         .contentShape(Rectangle())
+    }
+
+    private var artworkFrame: CGRect {
+        if item.isSwitchButton,
+           item.animation?.type == "spring" {
+            return isPressed
+                ? (animationEndFrame ?? CGRect(origin: visualOrigin, size: visualSize))
+                : (animationBeginFrame ?? CGRect(origin: visualOrigin, size: visualSize))
+        }
+        return CGRect(origin: visualOrigin, size: visualSize)
+    }
+
+    private func activateSwitch() {
+        inputCoordinator.pulse(keys: item.directKeys)
+
+        guard item.selectedAssetURL != nil || item.animation?.type == "spring" else {
+            return
+        }
+
+        if item.animation?.type == "spring" {
+            if item.selfRetracting {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                    isPressed = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                        isPressed = false
+                    }
+                }
+            } else {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                    isPressed.toggle()
+                }
+            }
+        } else {
+            isPressed = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                isPressed = false
+            }
+        }
     }
 
     @ViewBuilder
@@ -469,6 +550,51 @@ private final class ManicSkinNativeTouchView: UIView {
         var seen = Set<J2MEKey>()
         return directions.compactMap { item.directionalKeys[$0] }
             .filter { seen.insert($0).inserted }
+    }
+}
+
+@MainActor
+private struct ManicSkinSwitchCaptureView: UIViewRepresentable {
+    let onActivate: () -> Void
+
+    func makeUIView(context: Context) -> ManicSkinNativeSwitchView {
+        let view = ManicSkinNativeSwitchView()
+        view.onActivate = onActivate
+        return view
+    }
+
+    func updateUIView(
+        _ view: ManicSkinNativeSwitchView,
+        context: Context
+    ) {
+        view.onActivate = onActivate
+    }
+}
+
+@MainActor
+private final class ManicSkinNativeSwitchView: UIView {
+    var onActivate: (() -> Void)?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isOpaque = false
+        isUserInteractionEnabled = true
+        isMultipleTouchEnabled = false
+        accessibilityTraits = .button
+        addGestureRecognizer(
+            UITapGestureRecognizer(target: self, action: #selector(handleTap))
+        )
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        backgroundColor = .clear
+        isMultipleTouchEnabled = false
+    }
+
+    @objc private func handleTap() {
+        onActivate?()
     }
 }
 
