@@ -120,7 +120,11 @@ struct ManicSkin: Identifiable {
             let selectedURL = try assetURL(selectedName, folderURL: folderURL)
             let (directKeys, directionalKeys) = parseInputs(rawItem["inputs"])
 
-            guard !directKeys.isEmpty || !directionalKeys.isEmpty else {
+            // Keep visual-only ManicEMU controls (for example the FLEX
+            // and MENU buttons). Some core-specific inputs have no MIDP key
+            // equivalent in phoneME yet, but their artwork should still render.
+            guard !directKeys.isEmpty || !directionalKeys.isEmpty
+                    || normalURL != nil || selectedURL != nil else {
                 continue
             }
 
