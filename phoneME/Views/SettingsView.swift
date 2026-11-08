@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 enum AppTheme: String, CaseIterable, Identifiable {
     case light
@@ -173,6 +172,8 @@ struct SettingsView: View {
         }
         .fileImporter(
             isPresented: $isImportingManicSkin,
+            // Some Files providers expose .manicskin as a generic file type.
+            // Accept selectable files here; the ZIP and J2ME metadata are validated by ManicSkinStore.
             allowedContentTypes: [.item],
             allowsMultipleSelection: false
         ) { result in
@@ -466,9 +467,3 @@ struct ProfilesView: View {
 }
 
 
-private extension UTType {
-    static let phoneMEManicSkin = UTType(
-        importedAs: "dev.phoneme.manicskin",
-        conformingTo: .zip
-    )
-}
