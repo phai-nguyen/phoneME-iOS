@@ -230,10 +230,9 @@ struct ManicSkin: Identifiable {
                knobWidth > 0, knobHeight > 0,
                knobWidth <= mappingSize.width * 2,
                knobHeight <= mappingSize.height * 2 {
-                thumbstickSize = CGSize(
-                    width: knobWidth / mappingSize.width,
-                    height: knobHeight / mappingSize.height
-                )
+                // Keep knob dimensions in mappingSize pixels. The renderer
+                // multiplies them by the canvas pixel-to-point scale.
+                thumbstickSize = CGSize(width: knobWidth, height: knobHeight)
             } else {
                 thumbstickSize = nil
             }
