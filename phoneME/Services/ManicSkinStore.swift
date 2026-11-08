@@ -107,10 +107,11 @@ struct ManicSkin: Identifiable {
     ) -> ManicSkinLayout {
         // A skin is validated to contain at least one representation before
         // this method can be called.
-        standardPortrait
-            ?? edgePortrait
-            ?? standardLandscape
-            ?? edgeLandscape!
+        if let layout = standardPortrait { return layout }
+        if let layout = edgePortrait { return layout }
+        if let layout = standardLandscape { return layout }
+        if let layout = edgeLandscape { return layout }
+        preconditionFailure("Manic skin has no usable layout representation.")
     }
 
     static func read(from folderURL: URL, id: String) throws -> ManicSkin {
@@ -397,7 +398,8 @@ struct ManicSkin: Identifiable {
         mappingSize: CGSize,
         placement: String
     ) -> CGRect? {
-        guard mappingSize.width > 0, mappingSize.height > 0 else {
+        guard mappingSize.width > 0, mappingSize.height > 0,
+              rect.width > 0, rect.height > 0 else {
             return nil
         }
         guard abs(rect.minX) <= mappingSize.width * 2,
