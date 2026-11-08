@@ -1787,18 +1787,21 @@ private struct ManicSkinFLEXScreenOverlay: View {
         symbol: String,
         isLeading: Bool
     ) -> some View {
-        Capsule()
-            .fill(Color.cyan)
-            .frame(width: 28, height: 58)
-            .overlay {
-                Image(systemName: symbol)
-                    .font(.system(size: 12, weight: .heavy))
-                    .foregroundStyle(.black)
-            }
-            .overlay(Capsule().stroke(Color.white, lineWidth: 1.5))
-            .contentShape(Rectangle().size(width: 42, height: 72))
-            .accessibilityLabel(isLeading ? "Resize left edge" : "Resize right edge")
-            .highPriorityGesture(horizontalEdgeResizeGesture(isLeading: isLeading))
+        ZStack {
+            Capsule()
+                .fill(Color.cyan)
+                .frame(width: 28, height: 58)
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .heavy))
+                .foregroundStyle(.black)
+            Capsule()
+                .stroke(Color.white, lineWidth: 1.5)
+                .frame(width: 28, height: 58)
+        }
+        .frame(width: 42, height: 72)
+        .contentShape(Rectangle())
+        .accessibilityLabel(isLeading ? "Resize left edge" : "Resize right edge")
+        .highPriorityGesture(horizontalEdgeResizeGesture(isLeading: isLeading))
     }
 
     private func horizontalEdgeResizeGesture(isLeading: Bool) -> some Gesture {
