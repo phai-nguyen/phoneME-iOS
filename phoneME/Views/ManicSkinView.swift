@@ -875,7 +875,7 @@ private final class ManicSkinNativeThumbstickView: UIView {
 
     func update(
         item: ManicSkinItem,
-        canvasScale: CGFloat,
+        canvasScale: CGSize,
         onKeysChanged: @escaping ([J2MEKey], Bool) -> Void,
         onHaptic: @escaping () -> Void,
         onHapticPrepare: @escaping () -> Void
