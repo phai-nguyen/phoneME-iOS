@@ -528,13 +528,10 @@ private struct ManicSkinItemView: View {
 
     @ViewBuilder
     private var artwork: some View {
-        // asset.normal is the optional stationary joystick base. The
-        // thumbstick.name image is rendered only by the moving native knob.
-        // If the skin reuses the same image (or omits a separate base), do not
-        // draw a stationary duplicate underneath the moving knob.
-        if item.isThumbstick,
-           item.thumbstickAssetURL == nil
-                || item.thumbstickAssetURL == item.normalAssetURL {
+        // Match DeltaCore: a thumbstick has one movable knob image only.
+        // Rendering the same item art here as well would leave a stationary
+        // copy underneath the native knob and create the ghosting seen on drag.
+        if item.isThumbstick {
             EmptyView()
         } else if isPressed,
            let selectedURL = item.selectedAssetURL,
