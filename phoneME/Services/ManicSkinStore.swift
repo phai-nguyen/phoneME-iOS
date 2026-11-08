@@ -9,6 +9,8 @@ struct ManicSkinAnimation {
 
 struct ManicSkinItem: Identifiable {
     let id: String
+    let jsonIndex: Int
+    let placement: String
     let frame: CGRect
     let extendedFrame: CGRect
     let normalAssetURL: URL?
@@ -44,7 +46,13 @@ struct ManicSkinLayout {
     let mappingSize: CGSize
     let backgroundAssetURL: URL?
     let screenFrame: CGRect
+    let screenPlacement: String
+    let representationPath: [String]
     let items: [ManicSkinItem]
+
+    var representationKey: String {
+        representationPath.joined(separator: "/")
+    }
 }
 
 struct ManicSkin: Identifiable {
@@ -137,8 +145,14 @@ struct ManicSkin: Identifiable {
         }
 
         let representations = root["representations"] as? [String: Any] ?? [:]
+        let hasRepresentationsContainer = root["representations"] != nil
+        let hasIPhoneContainer = representations["iphone"] != nil
         let iphone = representations["iphone"] as? [String: Any] ?? representations
         let hasDisplayVariants = iphone["standard"] != nil || iphone["edgeToEdge"] != nil
+        let basePath = (hasRepresentationsContainer ? ["representations"] : [])
+            + (hasIPhoneContainer ? ["iphone"] : [])
+        let standardPath = basePath + (hasDisplayVariants ? ["standard"] : [])
+        let edgeToEdgePath = basePath + (hasDisplayVariants ? ["edgeToEdge"] : [])
 
         // Keep both iPhone display representations. DeltaCore selects between
         // them using the active window's safe-area traits instead of always
@@ -149,19 +163,23 @@ struct ManicSkin: Identifiable {
 
         let standardPortrait = try parseLayout(
             standardRepresentation?["portrait"] as? [String: Any],
-            folderURL: folderURL
+            folderURL: folderURL,
+            representationPath: standardPath + ["portrait"]
         )
         let standardLandscape = try parseLayout(
             standardRepresentation?["landscape"] as? [String: Any],
-            folderURL: folderURL
+            folderURL: folderURL,
+            representationPath: standardPath + ["landscape"]
         )
         let edgePortrait = try parseLayout(
             edgeToEdgeRepresentation?["portrait"] as? [String: Any],
-            folderURL: folderURL
+            folderURL: folderURL,
+            representationPath: edgeToEdgePath + ["portrait"]
         )
         let edgeLandscape = try parseLayout(
             edgeToEdgeRepresentation?["landscape"] as? [String: Any],
-            folderURL: folderURL
+            folderURL: folderURL,
+            representationPath: edgeToEdgePath + ["landscape"]
         )
 
         guard standardPortrait != nil
@@ -185,7 +203,8 @@ struct ManicSkin: Identifiable {
 
     private static func parseLayout(
         _ value: [String: Any]?,
-        folderURL: URL
+        folderURL: URL,
+        representationPath: [String]
     ) throws -> ManicSkinLayout? {
         guard let value else { return nil }
         guard let mapping = value["mappingSize"] as? [String: Any],
@@ -271,6 +290,8 @@ struct ManicSkin: Identifiable {
 
             items.append(ManicSkinItem(
                 id: "item-\(index)",
+                jsonIndex: index,
+                placement: placement,
                 frame: frame,
                 extendedFrame: extendedFrame,
                 normalAssetURL: normalURL,
@@ -288,8 +309,9 @@ struct ManicSkin: Identifiable {
 
         let screens = value["screens"] as? [[String: Any]] ?? []
         let screenFrame: CGRect
+        let screenPlacement = (screens.first?["placement"] as? String)?.lowercased() ?? "controller"
         if let firstScreen = screens.first {
-            let isAppPlacement = (firstScreen["placement"] as? String) == "app"
+            let isAppPlacement = screenPlacement == "app"
             if let outputFrame = firstScreen["outputFrame"],
                let normalized = normalizedOutputFrame(
                    outputFrame,
@@ -308,6 +330,8 @@ struct ManicSkin: Identifiable {
             mappingSize: mappingSize,
             backgroundAssetURL: backgroundURL,
             screenFrame: screenFrame,
+            screenPlacement: screenPlacement,
+            representationPath: representationPath,
             items: items
         )
     }
@@ -710,6 +734,125 @@ final class ManicSkinStore: ObservableObject {
             throw ManicSkinImportError.importFailed("The imported skin could not be indexed.")
         }
         return imported
+    }
+
+    func saveLayoutChanges(
+        for skin: ManicSkin,
+        layout: ManicSkinLayout,
+        itemFrames: [String: CGRect],
+        screenFrame: CGRect
+    ) throws {
+        let infoURL = skin.folderURL.appendingPathComponent("info.json")
+        let originalData = try Data(contentsOf: infoURL)
+        guard var root = try JSONSerialization.jsonObject(with: originalData) as? [String: Any] else {
+            throw ManicSkinImportError.invalidMetadata
+        }
+
+        try Self.updateDictionary(
+            &root,
+            path: layout.representationPath[...]
+        ) { representation in
+            var rawItems = representation["items"] as? [[String: Any]] ?? []
+            for item in layout.items {
+                guard let frame = itemFrames[item.id],
+                      rawItems.indices.contains(item.jsonIndex),
+                      Self.isValidEditableFrame(frame) else {
+                    continue
+                }
+
+                rawItems[item.jsonIndex]["frame"] = Self.serializedFrame(
+                    frame,
+                    mappingSize: layout.mappingSize,
+                    placement: item.placement
+                )
+
+                // Match ManicEMU: when the joystick body is resized, scale
+                // its inner knob dimensions by the same X/Y ratios.
+                if item.isThumbstick,
+                   let initialKnob = item.thumbstickSize,
+                   item.frame.width > 0,
+                   item.frame.height > 0,
+                   var thumbstick = rawItems[item.jsonIndex]["thumbstick"] as? [String: Any] {
+                    let scaleX = frame.width / item.frame.width
+                    let scaleY = frame.height / item.frame.height
+                    thumbstick["width"] = initialKnob.width * scaleX
+                    thumbstick["height"] = initialKnob.height * scaleY
+                    rawItems[item.jsonIndex]["thumbstick"] = thumbstick
+                }
+            }
+            representation["items"] = rawItems
+
+            var screens = representation["screens"] as? [[String: Any]] ?? []
+            let outputFrame = Self.serializedFrame(
+                screenFrame,
+                mappingSize: layout.mappingSize,
+                placement: layout.screenPlacement
+            )
+            if screens.isEmpty {
+                screens.append(["outputFrame": outputFrame])
+            } else {
+                screens[0]["outputFrame"] = outputFrame
+            }
+            representation["screens"] = screens
+        }
+
+        guard JSONSerialization.isValidJSONObject(root) else {
+            throw ManicSkinImportError.invalidMetadata
+        }
+        let updatedData = try JSONSerialization.data(
+            withJSONObject: root,
+            options: [.prettyPrinted, .sortedKeys]
+        )
+        try updatedData.write(to: infoURL, options: .atomic)
+        reload()
+    }
+
+    private static func updateDictionary(
+        _ object: inout [String: Any],
+        path: ArraySlice<String>,
+        mutation: (inout [String: Any]) throws -> Void
+    ) throws {
+        guard let key = path.first else {
+            try mutation(&object)
+            return
+        }
+        guard var nested = object[key] as? [String: Any] else {
+            throw ManicSkinImportError.invalidMetadata
+        }
+        try updateDictionary(&nested, path: path.dropFirst(), mutation: mutation)
+        object[key] = nested
+    }
+
+    private static func serializedFrame(
+        _ normalizedFrame: CGRect,
+        mappingSize: CGSize,
+        placement: String
+    ) -> [String: CGFloat] {
+        let frame: CGRect
+        if placement == "app" {
+            frame = normalizedFrame
+        } else {
+            frame = CGRect(
+                x: normalizedFrame.minX * mappingSize.width,
+                y: normalizedFrame.minY * mappingSize.height,
+                width: normalizedFrame.width * mappingSize.width,
+                height: normalizedFrame.height * mappingSize.height
+            )
+        }
+        return [
+            "x": frame.minX,
+            "y": frame.minY,
+            "width": frame.width,
+            "height": frame.height
+        ]
+    }
+
+    private static func isValidEditableFrame(_ frame: CGRect) -> Bool {
+        frame.origin.x.isFinite && frame.origin.y.isFinite
+            && frame.width.isFinite && frame.height.isFinite
+            && frame.width >= 0.005 && frame.height >= 0.005
+            && abs(frame.minX) <= 4 && abs(frame.minY) <= 4
+            && frame.width <= 4 && frame.height <= 4
     }
 
     func removeSkin(id: String) throws {
