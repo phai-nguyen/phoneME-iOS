@@ -198,7 +198,8 @@ struct EmulatorView: View {
                                         ) {
                                             FrameSurface(
                                                 frameStore: session.frameStore,
-                                                profile: runtimeProfile
+                                                profile: runtimeProfile,
+                                                fillsAvailableSize: true
                                             )
                                             .environmentObject(session)
                                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1339,19 +1340,24 @@ struct FrameSurface: View {
     var capturesHardwareKeyboard = true
     var fitsEntireFrame = false
     var forcesNearestNeighborFit = false
+    // The Manic skin outputFrame is the final viewport. Match DeltaCore's
+    // GameView by drawing the Java frame directly into this rectangle.
+    var fillsAvailableSize = false
 
     @State private var pointerIsDown = false
 
     var body: some View {
         GeometryReader { geometry in
             if let frameSize = frameStore.frameSize {
-                let rect = FrameLayout.renderedFrameRect(
-                    frameSize: frameSize,
-                    availableSize: geometry.size,
-                    profile: profile,
-                    strictFit: fitsEntireFrame,
-                    forceFit: forcesNearestNeighborFit
-                )
+                let rect = fillsAvailableSize
+                    ? CGRect(origin: .zero, size: geometry.size)
+                    : FrameLayout.renderedFrameRect(
+                        frameSize: frameSize,
+                        availableSize: geometry.size,
+                        profile: profile,
+                        strictFit: fitsEntireFrame,
+                        forceFit: forcesNearestNeighborFit
+                    )
 
                 ZStack(alignment: .topLeading) {
                     renderedFrame()
@@ -1400,7 +1406,8 @@ struct FrameSurface: View {
                         .contentShape(Rectangle())
                         .gesture(pointerGesture(
                             frameSize: frameSize,
-                            availableSize: geometry.size
+                            availableSize: geometry.size,
+                            fillsAvailableSize: fillsAvailableSize
                         ))
 #endif
                 }
@@ -1434,7 +1441,8 @@ struct FrameSurface: View {
 
     private func pointerGesture(
         frameSize: CGSize,
-        availableSize: CGSize
+        availableSize: CGSize,
+        fillsAvailableSize: Bool
     ) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
@@ -1444,7 +1452,8 @@ struct FrameSurface: View {
                     value.location,
                     frameSize: frameSize,
                     availableSize: availableSize,
-                    clampOutside: pointerIsDown
+                    clampOutside: pointerIsDown,
+                    fillsAvailableSize: fillsAvailableSize
                 ) else {
                     return
                 }
@@ -1460,7 +1469,8 @@ struct FrameSurface: View {
                         value.location,
                         frameSize: frameSize,
                         availableSize: availableSize,
-                        clampOutside: true
+                        clampOutside: true,
+                        fillsAvailableSize: fillsAvailableSize
                       ) else {
                     return
                 }
@@ -1473,15 +1483,18 @@ struct FrameSurface: View {
         _ location: CGPoint,
         frameSize: CGSize,
         availableSize: CGSize,
-        clampOutside: Bool
+        clampOutside: Bool,
+        fillsAvailableSize: Bool
     ) -> (x: Int32, y: Int32)? {
-        let rect = FrameLayout.renderedFrameRect(
-            frameSize: frameSize,
-            availableSize: availableSize,
-            profile: profile,
-            strictFit: fitsEntireFrame,
-            forceFit: forcesNearestNeighborFit
-        )
+        let rect = fillsAvailableSize
+            ? CGRect(origin: .zero, size: availableSize)
+            : FrameLayout.renderedFrameRect(
+                frameSize: frameSize,
+                availableSize: availableSize,
+                profile: profile,
+                strictFit: fitsEntireFrame,
+                forceFit: forcesNearestNeighborFit
+            )
         guard rect.width > 0, rect.height > 0 else { return nil }
         guard clampOutside || rect.contains(location) else { return nil }
 
