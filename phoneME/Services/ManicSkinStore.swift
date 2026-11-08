@@ -294,6 +294,16 @@ struct ManicSkin: Identifiable {
         case "softright", "softkeyright", "start", "r1", "r3": return .softRight
         case "star", "*": return .star
         case "pound", "hash", "#": return .pound
+        case "num0": return .zero
+        case "num1": return .one
+        case "num2": return .two
+        case "num3": return .three
+        case "num4": return .four
+        case "num5": return .five
+        case "num6": return .six
+        case "num7": return .seven
+        case "num8": return .eight
+        case "num9": return .nine
         default:
             if token.count == 1, let digit = token.first,
                let value = digit.wholeNumberValue, (0...9).contains(value) {
