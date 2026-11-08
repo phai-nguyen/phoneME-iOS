@@ -116,6 +116,28 @@ struct EmulatorView: View {
         presentsFullscreenSurface && !isAppBarVisible && !isStatusBarVisible
     }
 
+    // ManicEMU lays its controller out against the full window bounds. The
+    // navigation safe area was reserving the Home-indicator and side insets,
+    // which kept the bottom-row controls away from the physical edges.
+    private var presentsManicSkin: Bool {
+        showKeypad
+            && keyboardAdjustmentMode == .none
+            && manicSkinStore.selectedSkin != nil
+    }
+
+    private var ignoredContainerSafeAreaEdges: Edge.Set {
+        if presentsEdgeToEdgeSurface { return .all }
+
+        var edges: Edge.Set = []
+        if presentsManicSkin {
+            edges.formUnion([.bottom, .leading, .trailing])
+        }
+        if isAppBarTemporarilyVisible && !isAppBarVisible {
+            edges.insert(.top)
+        }
+        return edges
+    }
+
     var body: some View {
         PhoneMENavigationStack {
             GeometryReader { geometry in
@@ -281,9 +303,7 @@ struct EmulatorView: View {
             }
             .ignoresSafeArea(
                 .container,
-                edges: presentsEdgeToEdgeSurface
-                    ? .all
-                    : (isAppBarTemporarilyVisible && !isAppBarVisible ? .top : [])
+                edges: ignoredContainerSafeAreaEdges
             )
             .simultaneousGesture(appBarRevealGesture)
 #if os(iOS)

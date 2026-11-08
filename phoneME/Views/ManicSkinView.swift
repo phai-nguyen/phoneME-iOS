@@ -3,6 +3,21 @@ import SwiftUI
 import UIKit
 import simd
 
+#if os(iOS)
+private struct ManicSkinSystemOverlayVisibilityModifier: ViewModifier {
+    let isLandscape: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 16.0, *) {
+            content.persistentSystemOverlays(isLandscape ? .hidden : .automatic)
+        } else {
+            content
+        }
+    }
+}
+#endif
+
 @MainActor
 struct ManicSkinView<ScreenContent: View>: View {
     let skin: ManicSkin
@@ -149,6 +164,11 @@ struct ManicSkinView<ScreenContent: View>: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
+            .modifier(
+                ManicSkinSystemOverlayVisibilityModifier(
+                    isLandscape: geometry.size.width > geometry.size.height
+                )
+            )
         }
         .overlay {
             if showsFlexEditor {
@@ -1317,6 +1337,11 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
             .onChange(of: layout.representationKey) { _ in
                 loadFrames(from: layout)
             }
+            .modifier(
+                ManicSkinSystemOverlayVisibilityModifier(
+                    isLandscape: geometry.size.width > geometry.size.height
+                )
+            )
         }
         .background(Color.black)
         .accessibilityLabel("ManicEMU FLEX skin editor")
