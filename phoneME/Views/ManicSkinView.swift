@@ -250,10 +250,6 @@ struct ManicSkinView<ScreenContent: View>: View {
         _ normalized: CGRect,
         origin: CGPoint,
         canvasSize: CGSize
-    ) -> CGRect {    private func renderedFrame(
-        _ normalized: CGRect,
-        origin: CGPoint,
-        canvasSize: CGSize
     ) -> CGRect {
         CGRect(
             x: origin.x + normalized.minX * canvasSize.width,
