@@ -422,7 +422,7 @@ final class ManicSkinStore: ObservableObject {
         // UIDocumentPicker is configured with asCopy: true, but make one more
         // private copy so all subsequent reads are independent of provider URLs.
         let localImportURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("phoneME-ManicSkin-\\(UUID().uuidString)")
+            .appendingPathComponent("phoneME-ManicSkin-\(UUID().uuidString)")
             .appendingPathExtension("manicskin")
         defer {
             try? FileManager.default.removeItem(at: localImportURL)
@@ -450,7 +450,7 @@ final class ManicSkinStore: ObservableObject {
         }
 
         let stagingURL = skinsDirectoryURL.appendingPathComponent(
-            ".import-\\(UUID().uuidString)",
+            ".import-\(UUID().uuidString)",
             isDirectory: true
         )
         do {
