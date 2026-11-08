@@ -142,6 +142,10 @@ private final class ManicSkinInputCoordinator: ObservableObject {
         }
     }
 
+    func prepareHaptic() {
+        hapticGenerator?.prepare()
+    }
+
     func triggerHaptic() {
         guard let hapticGenerator else { return }
         hapticGenerator.impactOccurred()
@@ -206,6 +210,9 @@ private struct ManicSkinItemView: View {
                     },
                     onHaptic: {
                         inputCoordinator.triggerHaptic()
+                    },
+                    onHapticPrepare: {
+                        inputCoordinator.prepareHaptic()
                     }
                 )
             } else {
@@ -366,165 +373,284 @@ private final class ManicSkinNativeTouchView: UIView {
 }
 
 @MainActor
+private final class ManicSkinImmediatePanGestureRecognizer: UIPanGestureRecognizer {
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard state != .began else { return }
+        super.touchesBegan(touches, with: event)
+        state = .began
+    }
+}
+
+@MainActor
 private struct ManicSkinThumbstickCaptureView: UIViewRepresentable {
     let item: ManicSkinItem
     let canvasScale: CGFloat
     let onKeysChanged: ([J2MEKey], Bool) -> Void
     let onHaptic: () -> Void
+    let onHapticPrepare: () -> Void
 
     func makeUIView(context: Context) -> ManicSkinNativeThumbstickView {
         let view = ManicSkinNativeThumbstickView()
-        view.update(item: item, canvasScale: canvasScale,
-                    onKeysChanged: onKeysChanged, onHaptic: onHaptic)
+        view.update(
+            item: item,
+            canvasScale: canvasScale,
+            onKeysChanged: onKeysChanged,
+            onHaptic: onHaptic,
+            onHapticPrepare: onHapticPrepare
+        )
         return view
     }
 
-    func updateUIView(_ view: ManicSkinNativeThumbstickView, context: Context) {
-        view.update(item: item, canvasScale: canvasScale,
-                    onKeysChanged: onKeysChanged, onHaptic: onHaptic)
+    func updateUIView(
+        _ view: ManicSkinNativeThumbstickView,
+        context: Context
+    ) {
+        view.update(
+            item: item,
+            canvasScale: canvasScale,
+            onKeysChanged: onKeysChanged,
+            onHaptic: onHaptic,
+            onHapticPrepare: onHapticPrepare
+        )
     }
 
-    static func dismantleUIView(_ view: ManicSkinNativeThumbstickView, coordinator: ()) {
+    static func dismantleUIView(
+        _ view: ManicSkinNativeThumbstickView,
+        coordinator: ()
+    ) {
         view.releaseAllTouches()
     }
 }
 
 @MainActor
 private final class ManicSkinNativeThumbstickView: UIView {
+    private enum Direction: Equatable {
+        case up, down, left, right
+
+        init?(xAxis: Double, yAxis: Double, threshold: Double) {
+            let deadzone = -threshold...threshold
+            switch (xAxis, yAxis) {
+            case (deadzone, deadzone):
+                return nil
+            case (...0, deadzone):
+                self = .left
+            case (0..., deadzone):
+                self = .right
+            case (deadzone, ...0):
+                self = .down
+            case (deadzone, 0...):
+                self = .up
+            default:
+                return nil
+            }
+        }
+    }
+
     private let knobImageView = UIImageView()
+    private var panGestureRecognizer: ManicSkinImmediatePanGestureRecognizer?
     private var item: ManicSkinItem?
     private var canvasScale: CGFloat = 1
     private var onKeysChanged: (([J2MEKey], Bool) -> Void)?
     private var onHaptic: (() -> Void)?
-    private var activeTouchID: ObjectIdentifier?
+    private var onHapticPrepare: (() -> Void)?
     private var trackingOrigin: CGPoint?
+    private var previousDirection: Direction?
+    private var isActivated = false
     private var activeKeys = Set<J2MEKey>()
     private var knobCenter = CGPoint.zero
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .clear
-        isOpaque = false
-        isMultipleTouchEnabled = true
-        clipsToBounds = false
-        knobImageView.backgroundColor = .clear
-        knobImageView.contentMode = .scaleAspectFit
-        knobImageView.isUserInteractionEnabled = false
-        addSubview(knobImageView)
+        configureView()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+        configureView()
+    }
+
+    private func configureView() {
         backgroundColor = .clear
+        isOpaque = false
         isMultipleTouchEnabled = true
         clipsToBounds = false
+
+        knobImageView.backgroundColor = .clear
         knobImageView.contentMode = .scaleAspectFit
+        knobImageView.isUserInteractionEnabled = false
         addSubview(knobImageView)
+
+        let pan = ManicSkinImmediatePanGestureRecognizer(
+            target: self,
+            action: #selector(handlePanGesture(_:))
+        )
+        pan.delaysTouchesBegan = true
+        pan.cancelsTouchesInView = true
+        pan.maximumNumberOfTouches = 1
+        addGestureRecognizer(pan)
+        panGestureRecognizer = pan
     }
 
     func update(
         item: ManicSkinItem,
         canvasScale: CGFloat,
         onKeysChanged: @escaping ([J2MEKey], Bool) -> Void,
-        onHaptic: @escaping () -> Void
+        onHaptic: @escaping () -> Void,
+        onHapticPrepare: @escaping () -> Void
     ) {
         let imageChanged = self.item?.normalAssetURL != item.normalAssetURL
         self.item = item
         self.canvasScale = canvasScale
         self.onKeysChanged = onKeysChanged
         self.onHaptic = onHaptic
+        self.onHapticPrepare = onHapticPrepare
+
         if imageChanged || knobImageView.image == nil {
-            knobImageView.image = item.normalAssetURL.flatMap { ManicSkinPDFRenderer.image(at: $0) }
+            knobImageView.image = item.normalAssetURL.flatMap {
+                ManicSkinPDFRenderer.image(at: $0)
+            }
         }
         setNeedsLayout()
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
+
         let size: CGSize
         if let knob = item?.thumbstickSize {
-            size = CGSize(width: max(knob.width * canvasScale, 1),
-                          height: max(knob.height * canvasScale, 1))
+            size = CGSize(
+                width: max(knob.width * canvasScale, 1),
+                height: max(knob.height * canvasScale, 1)
+            )
         } else {
             size = bounds.size
         }
+
         knobImageView.bounds = CGRect(origin: .zero, size: size)
-        if activeTouchID == nil {
+        if trackingOrigin == nil {
             knobCenter = CGPoint(x: bounds.midX, y: bounds.midY)
         }
         knobImageView.center = knobCenter
     }
 
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard activeTouchID == nil,
-              let touch = touches.first,
-              bounds.width > 0, bounds.height > 0 else { return }
-        activeTouchID = ObjectIdentifier(touch)
-        trackingOrigin = touch.location(in: self)
-        knobCenter = CGPoint(x: bounds.midX, y: bounds.midY)
-        knobImageView.center = knobCenter
-    }
+    @objc private func handlePanGesture(
+        _ gestureRecognizer: UIPanGestureRecognizer
+    ) {
+        switch gestureRecognizer.state {
+        case .began:
+            trackingOrigin = gestureRecognizer.location(in: self)
+            previousDirection = nil
+            isActivated = false
+            onHapticPrepare?()
+            updateAnalog(translation: .zero)
 
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let activeTouchID,
-              let touch = touches.first(where: { ObjectIdentifier($0) == activeTouchID }),
-              var origin = trackingOrigin else { return }
+        case .changed:
+            guard var origin = trackingOrigin else { return }
 
-        let location = touch.location(in: self)
-        let dx = location.x - origin.x
-        let dy = location.y - origin.y
+            let location = gestureRecognizer.location(in: self)
+            let translationX = location.x - origin.x
+            let translationY = location.y - origin.y
+            let translatedX = origin.x + translationX
+            let translatedY = origin.y + translationY
 
-        if !(bounds.minX...bounds.maxX).contains(location.x), abs(dx) >= bounds.midX {
-            origin.x = bounds.midX
+            // Match DeltaCore: after reaching an edge, recenter only the
+            // tracking origin so the knob can follow the finger on the way back.
+            if !(bounds.minX...bounds.maxX).contains(translatedX),
+               abs(translationX) >= bounds.midX {
+                origin.x = bounds.midX
+            }
+            if !(bounds.minY...bounds.maxY).contains(translatedY),
+               abs(translationY) >= bounds.midY {
+                origin.y = bounds.midY
+            }
+
+            updateAnalog(translation: CGPoint(x: translationX, y: translationY))
+            trackingOrigin = origin
+
+        case .ended, .cancelled, .failed:
+            guard trackingOrigin != nil else { return }
+            onHaptic?()
+            releaseKeys()
+            trackingOrigin = nil
+            isActivated = false
+            previousDirection = nil
+            resetKnobToCenter()
+
+        default:
+            break
         }
-        if !(bounds.minY...bounds.maxY).contains(location.y), abs(dy) >= bounds.midY {
-            origin.y = bounds.midY
-        }
-        trackingOrigin = origin
-        updateAnalog(translation: CGPoint(x: dx, y: dy))
-    }
-
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        finish(touches)
-    }
-
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        finish(touches)
     }
 
     func releaseAllTouches() {
+        let wasTracking = trackingOrigin != nil
         releaseKeys()
-        activeTouchID = nil
         trackingOrigin = nil
-        knobCenter = CGPoint(x: bounds.midX, y: bounds.midY)
-        knobImageView.center = knobCenter
+        isActivated = false
+        previousDirection = nil
+        resetKnobToCenter()
+
+        // Reset a recognizer that was active when the app was backgrounded
+        // or when SwiftUI dismantles this control.
+        if wasTracking, let panGestureRecognizer {
+            panGestureRecognizer.isEnabled = false
+            panGestureRecognizer.isEnabled = true
+        }
     }
 
     private func updateAnalog(translation: CGPoint) {
-        guard bounds.width > 0, bounds.height > 0 else { return }
+        guard !bounds.isEmpty else { return }
+
         let center = CGPoint(x: bounds.midX, y: bounds.midY)
-        let dx = Double(translation.x)
-        let dy = Double(translation.y)
+        let point = SIMD2(Double(translation.x), Double(translation.y))
         let maximumDistance = Double(bounds.midX) * 0.8
-        let distance = min(hypot(dx, dy), maximumDistance)
-        let angle = atan2(dy, dx)
+        let distance = min(simd_length(point), maximumDistance)
+        let angle = atan2(point.y, point.x)
+
         let adjustedX = Double(center.x) + distance * cos(angle)
         let adjustedY = Double(center.y) + distance * sin(angle)
         knobCenter = CGPoint(x: adjustedX, y: adjustedY)
         knobImageView.center = knobCenter
 
-        let insetSide = Double(bounds.midX)
-        guard insetSide > 0 else { return }
-        let insetMinX = Double(center.x) - insetSide / 2
-        let insetMinY = Double(center.y) - insetSide / 2
+        let insetSideLength = Double(bounds.midX)
+        guard insetSideLength > 0 else { return }
 
-        var xAxis = ((adjustedX - insetMinX) / insetSide) * 2 - 1
-        xAxis = min(max(xAxis, -1), 1)
+        let insetFrame = CGRect(
+            x: center.x - insetSideLength / 2,
+            y: center.y - insetSideLength / 2,
+            width: insetSideLength,
+            height: insetSideLength
+        )
+
+        var xAxis = Double((CGFloat(adjustedX) - insetFrame.minX) / insetFrame.width)
+        xAxis = min(max(xAxis, 0), 1)
+        xAxis = (xAxis * 2) - 1
         if abs(xAxis) < 0.1 { xAxis = 0 }
 
-        var yAxis = -(((adjustedY - insetMinY) / insetSide) * 2 - 1)
-        yAxis = min(max(yAxis, -1), 1)
+        var yAxis = Double((CGFloat(adjustedY) - insetFrame.minY) / insetFrame.height)
+        yAxis = max(yAxis, 0)
+        yAxis = min(yAxis, 1)
+        yAxis = -((yAxis * 2) - 1)
         if abs(yAxis) < 0.1 { yAxis = 0 }
+
+        let magnitude = simd_length(SIMD2(xAxis, yAxis))
+        let nowActivated = magnitude > 0.1
+
+        if let direction = Direction(
+            xAxis: xAxis,
+            yAxis: yAxis,
+            threshold: 0.1
+        ) {
+            if previousDirection != direction {
+                onHaptic?()
+            }
+            previousDirection = direction
+        } else {
+            if nowActivated && !isActivated {
+                onHaptic?()
+            }
+            previousDirection = nil
+        }
+        isActivated = nowActivated
 
         var nextKeys = Set<J2MEKey>()
         if xAxis < 0 { nextKeys.insert(.left) }
@@ -535,25 +661,18 @@ private final class ManicSkinNativeThumbstickView: UIView {
     }
 
     private func updateKeys(_ nextKeys: Set<J2MEKey>) {
-        let released = activeKeys.subtracting(nextKeys).sorted { $0.rawValue < $1.rawValue }
-        let pressed = nextKeys.subtracting(activeKeys).sorted { $0.rawValue < $1.rawValue }
-        if !released.isEmpty { onKeysChanged?(released, false) }
+        let released = activeKeys.subtracting(nextKeys)
+            .sorted { $0.rawValue < $1.rawValue }
+        let pressed = nextKeys.subtracting(activeKeys)
+            .sorted { $0.rawValue < $1.rawValue }
+
+        if !released.isEmpty {
+            onKeysChanged?(released, false)
+        }
         if !pressed.isEmpty {
             onKeysChanged?(pressed, true)
-            onHaptic?()
         }
         activeKeys = nextKeys
-    }
-
-    private func finish(_ touches: Set<UITouch>) {
-        guard let activeTouchID,
-              touches.contains(where: { ObjectIdentifier($0) == activeTouchID }) else { return }
-        releaseKeys()
-        self.activeTouchID = nil
-        trackingOrigin = nil
-        knobCenter = CGPoint(x: bounds.midX, y: bounds.midY)
-        knobImageView.center = knobCenter
-        onHaptic?()
     }
 
     private func releaseKeys() {
@@ -561,6 +680,11 @@ private final class ManicSkinNativeThumbstickView: UIView {
         let keys = activeKeys.sorted { $0.rawValue < $1.rawValue }
         activeKeys.removeAll()
         onKeysChanged?(keys, false)
+    }
+
+    private func resetKnobToCenter() {
+        knobCenter = CGPoint(x: bounds.midX, y: bounds.midY)
+        knobImageView.center = knobCenter
     }
 }
 #endif
