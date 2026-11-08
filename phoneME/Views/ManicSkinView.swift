@@ -1543,7 +1543,7 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
                 .font(.system(size: 13, weight: .semibold))
             Text(
                 page == .screen
-                    ? "Kéo để di chuyển · Chụm hai ngón để thu/phóng · Kéo hai cạnh để mở rộng ngang · Kéo góc để resize"
+                    ? "Kéo để di chuyển · Chụm hai ngón để thu/phóng · Kéo 4 cạnh để chỉnh riêng chiều rộng và chiều cao"
                     : "Chọn và kéo nút · Kéo góc dưới phải để thay đổi kích thước"
             )
             .font(.system(size: 12, weight: .medium))
@@ -1654,6 +1654,35 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
 }
 
 @MainActor
+private enum ManicSkinFLEXScreenEdge: Equatable {
+    case top
+    case bottom
+    case left
+    case right
+
+    var symbol: String {
+        switch self {
+        case .top: return "chevron.compact.up"
+        case .bottom: return "chevron.compact.down"
+        case .left: return "chevron.compact.left"
+        case .right: return "chevron.compact.right"
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .top: return "Resize top edge"
+        case .bottom: return "Resize bottom edge"
+        case .left: return "Resize left edge"
+        case .right: return "Resize right edge"
+        }
+    }
+
+    var isHorizontalEdge: Bool {
+        self == .top || self == .bottom
+    }
+}
+
 private struct ManicSkinFLEXScreenOverlay: View {
     @Binding var frame: CGRect
     let canvasSize: CGSize
@@ -1662,8 +1691,7 @@ private struct ManicSkinFLEXScreenOverlay: View {
     @State private var moveStartFrame: CGRect?
     @State private var resizeStartFrame: CGRect?
     @State private var pinchStartFrame: CGRect?
-    @State private var leadingResizeStartFrame: CGRect?
-    @State private var trailingResizeStartFrame: CGRect?
+    @State private var edgeResizeStartFrame: CGRect?
 
     var body: some View {
         let rect = CGRect(
@@ -1737,102 +1765,64 @@ private struct ManicSkinFLEXScreenOverlay: View {
                     pinchStartFrame = nil
                 }
         )
-        .overlay(alignment: .bottomTrailing) {
-            Circle()
-                .fill(Color.cyan)
-                .frame(width: 28, height: 28)
-                .overlay {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.black)
-                }
-                .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
-                .offset(x: 12, y: 12)
-                .gesture(
-                    DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                        .onChanged { value in
-                            if resizeStartFrame == nil { resizeStartFrame = frame }
-                            guard let start = resizeStartFrame else { return }
-                            let dw = value.translation.width / max(canvasSize.width, 1)
-                            let dh = value.translation.height / max(canvasSize.height, 1)
-                            frame = Self.clamped(
-                                CGRect(
-                                    x: start.minX,
-                                    y: start.minY,
-                                    width: start.width + dw,
-                                    height: start.height + dh
-                                )
-                            )
-                        }
-                        .onEnded { _ in resizeStartFrame = nil }
-                )
+        .overlay(alignment: .top) {
+            edgeHandle(.top)
+                .frame(maxWidth: .infinity)
+                .frame(height: 20)
+                .contentShape(Rectangle())
+                .highPriorityGesture(edgeResizeGesture(.top))
+        }
+        .overlay(alignment: .bottom) {
+            edgeHandle(.bottom)
+                .frame(maxWidth: .infinity)
+                .frame(height: 20)
+                .contentShape(Rectangle())
+                .highPriorityGesture(edgeResizeGesture(.bottom))
         }
         .overlay(alignment: .leading) {
-            horizontalEdgeHandle(
-                symbol: "chevron.left",
-                isLeading: true
-            )
-            .offset(x: -14)
+            edgeHandle(.left)
+                .frame(width: 20)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .highPriorityGesture(edgeResizeGesture(.left))
         }
         .overlay(alignment: .trailing) {
-            horizontalEdgeHandle(
-                symbol: "chevron.right",
-                isLeading: false
-            )
-            .offset(x: 14)
+            edgeHandle(.right)
+                .frame(width: 20)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .highPriorityGesture(edgeResizeGesture(.right))
         }
     }
 
-    private func horizontalEdgeHandle(
-        symbol: String,
-        isLeading: Bool
-    ) -> some View {
+    private func edgeHandle(_ edge: ManicSkinFLEXScreenEdge) -> some View {
         ZStack {
-            Capsule()
-                .fill(Color.cyan)
-                .frame(width: 28, height: 58)
-            Image(systemName: symbol)
-                .font(.system(size: 12, weight: .heavy))
-                .foregroundStyle(.black)
-            Capsule()
-                .stroke(Color.white, lineWidth: 1.5)
-                .frame(width: 28, height: 58)
+            Color.clear
+            Image(systemName: edge.symbol)
+                .font(.system(size: edge.isHorizontalEdge ? 15 : 17, weight: .bold))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.7), radius: 2, x: 0, y: 1)
         }
-        .frame(width: 42, height: 72)
-        .contentShape(Rectangle())
-        .accessibilityLabel(isLeading ? "Resize left edge" : "Resize right edge")
-        .highPriorityGesture(horizontalEdgeResizeGesture(isLeading: isLeading))
+        .accessibilityLabel(edge.accessibilityLabel)
     }
 
-    private func horizontalEdgeResizeGesture(isLeading: Bool) -> some Gesture {
+    private func edgeResizeGesture(_ edge: ManicSkinFLEXScreenEdge) -> some Gesture {
         DragGesture(minimumDistance: 1, coordinateSpace: .global)
             .onChanged { value in
-                let start: CGRect
-                if isLeading {
-                    if leadingResizeStartFrame == nil {
-                        moveStartFrame = nil
-                        resizeStartFrame = nil
-                        pinchStartFrame = nil
-                        leadingResizeStartFrame = frame
-                    }
-                    guard let initial = leadingResizeStartFrame else { return }
-                    start = initial
-                } else {
-                    if trailingResizeStartFrame == nil {
-                        moveStartFrame = nil
-                        resizeStartFrame = nil
-                        pinchStartFrame = nil
-                        trailingResizeStartFrame = frame
-                    }
-                    guard let initial = trailingResizeStartFrame else { return }
-                    start = initial
+                if edgeResizeStartFrame == nil {
+                    moveStartFrame = nil
+                    resizeStartFrame = nil
+                    pinchStartFrame = nil
+                    edgeResizeStartFrame = frame
                 }
+                guard let initial = edgeResizeStartFrame else { return }
 
                 let dx = value.translation.width / max(canvasSize.width, 1)
-                frame = Self.resizedHorizontalEdge(
-                    start,
-                    translation: dx,
-                    fromLeading: isLeading,
+                let dy = value.translation.height / max(canvasSize.height, 1)
+                frame = Self.resizedEdge(
+                    initial,
+                    edge: edge,
+                    translation: CGPoint(x: dx, y: dy),
                     canvasSize: canvasSize
                 )
             }
@@ -1841,28 +1831,51 @@ private struct ManicSkinFLEXScreenOverlay: View {
                 withAnimation(.easeOut(duration: 0.12)) {
                     frame = optimizedFrame
                 }
-                if isLeading {
-                    leadingResizeStartFrame = nil
-                } else {
-                    trailingResizeStartFrame = nil
-                }
+                edgeResizeStartFrame = nil
             }
     }
 
-    private static func resizedHorizontalEdge(
+    private static func resizedEdge(
         _ initial: CGRect,
-        translation: CGFloat,
-        fromLeading: Bool,
+        edge: ManicSkinFLEXScreenEdge,
+        translation: CGPoint,
         canvasSize: CGSize
     ) -> CGRect {
-        let minimumWidth = min(1.0, max(0.06, 50 / max(canvasSize.width, 1)))
-        let fixedLeft = initial.minX
-        let fixedRight = initial.maxX
+        // Match ManicEMU's 50-point minimum edge size in normalized mapping coordinates.
+        let minimumWidth = min(1.0, 50 / max(canvasSize.width, 1))
+        let minimumHeight = min(1.0, 50 / max(canvasSize.height, 1))
 
-        if fromLeading {
-            let proposedLeft = initial.minX + translation
+        switch edge {
+        case .top:
+            let fixedBottom = initial.maxY
+            let newTop = min(
+                max(initial.minY + translation.y, 0),
+                max(fixedBottom - minimumHeight, 0)
+            )
+            return CGRect(
+                x: initial.minX,
+                y: newTop,
+                width: initial.width,
+                height: fixedBottom - newTop
+            )
+
+        case .bottom:
+            let fixedTop = initial.minY
+            let newBottom = min(
+                max(initial.maxY + translation.y, min(fixedTop + minimumHeight, 1)),
+                1
+            )
+            return CGRect(
+                x: initial.minX,
+                y: fixedTop,
+                width: initial.width,
+                height: newBottom - fixedTop
+            )
+
+        case .left:
+            let fixedRight = initial.maxX
             let newLeft = min(
-                max(proposedLeft, 0),
+                max(initial.minX + translation.x, 0),
                 max(fixedRight - minimumWidth, 0)
             )
             return CGRect(
@@ -1871,19 +1884,20 @@ private struct ManicSkinFLEXScreenOverlay: View {
                 width: fixedRight - newLeft,
                 height: initial.height
             )
-        }
 
-        let proposedRight = initial.maxX + translation
-        let newRight = min(
-            max(proposedRight, min(fixedLeft + minimumWidth, 1)),
-            1
-        )
-        return CGRect(
-            x: fixedLeft,
-            y: initial.minY,
-            width: newRight - fixedLeft,
-            height: initial.height
-        )
+        case .right:
+            let fixedLeft = initial.minX
+            let newRight = min(
+                max(initial.maxX + translation.x, min(fixedLeft + minimumWidth, 1)),
+                1
+            )
+            return CGRect(
+                x: fixedLeft,
+                y: initial.minY,
+                width: newRight - fixedLeft,
+                height: initial.height
+            )
+        }
     }
 
     private static func scaledAroundCenter(
