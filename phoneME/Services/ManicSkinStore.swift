@@ -137,7 +137,10 @@ struct ManicSkin: Identifiable {
         let screens = value["screens"] as? [[String: Any]] ?? []
         let screenFrame: CGRect
         if let outputFrame = screens.first?["outputFrame"],
-           let normalized = normalizedOutputFrame(outputFrame) {
+           let normalized = normalizedOutputFrame(
+               outputFrame,
+               mappingSize: mappingSize
+           ) {
             screenFrame = normalized
         } else {
             screenFrame = CGRect(x: 0, y: 0, width: 1, height: 1)
@@ -166,18 +169,39 @@ struct ManicSkin: Identifiable {
         return url
     }
 
-    private static func normalizedOutputFrame(_ value: Any?) -> CGRect? {
+    private static func normalizedOutputFrame(
+        _ value: Any?,
+        mappingSize: CGSize
+    ) -> CGRect? {
         guard let frame = value as? [String: Any],
               let x = number(frame["x"]),
               let y = number(frame["y"]),
               let width = number(frame["width"]),
               let height = number(frame["height"]),
-              width > 0, height > 0,
-              abs(x) <= 2, abs(y) <= 2,
-              width <= 2, height <= 2 else {
+              width > 0, height > 0 else {
             return nil
         }
-        return CGRect(x: x, y: y, width: width, height: height)
+
+        // RetroSkinner writes outputFrame in mappingSize pixel coordinates.
+        // Some ManicEMU skin revisions store an already-normalized rectangle.
+        if abs(x) <= 2, abs(y) <= 2, width <= 2, height <= 2 {
+            return CGRect(x: x, y: y, width: width, height: height)
+        }
+
+        guard mappingSize.width > 0, mappingSize.height > 0,
+              abs(x) <= mappingSize.width * 2,
+              abs(y) <= mappingSize.height * 2,
+              width <= mappingSize.width * 2,
+              height <= mappingSize.height * 2 else {
+            return nil
+        }
+
+        return CGRect(
+            x: x / mappingSize.width,
+            y: y / mappingSize.height,
+            width: width / mappingSize.width,
+            height: height / mappingSize.height
+        )
     }
 
     private static func normalizedFrame(
