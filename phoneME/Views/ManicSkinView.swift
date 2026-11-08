@@ -48,10 +48,27 @@ struct ManicSkinView<ScreenContent: View>: View {
                 width: canvasSize.width / mappingWidth,
                 height: canvasSize.height / mappingHeight
             )
+
+            // Keep phoneME's original game-display geometry independent from
+            // the skin/controller transform. The skin items use non-uniform
+            // X/Y scaling, while the Java output frame keeps one uniform
+            // aspect-fit scale and remains centered inside the host bounds.
+            let screenFitScale = min(
+                canvasSize.width / mappingWidth,
+                canvasSize.height / mappingHeight
+            )
+            let screenCanvasSize = CGSize(
+                width: mappingWidth * screenFitScale,
+                height: mappingHeight * screenFitScale
+            )
+            let screenOrigin = CGPoint(
+                x: (canvasSize.width - screenCanvasSize.width) / 2,
+                y: (canvasSize.height - screenCanvasSize.height) / 2
+            )
             let screenFrame = renderedFrame(
                 layout.screenFrame,
-                origin: origin,
-                canvasSize: canvasSize
+                origin: screenOrigin,
+                canvasSize: screenCanvasSize
             )
 
             ZStack(alignment: .topLeading) {
