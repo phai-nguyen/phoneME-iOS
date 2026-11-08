@@ -1543,7 +1543,7 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
                 .font(.system(size: 13, weight: .semibold))
             Text(
                 page == .screen
-                    ? "Kéo để di chuyển · Chụm hai ngón để thu/phóng đồng đều · Kéo góc để resize"
+                    ? "Kéo để di chuyển · Chụm hai ngón để thu/phóng · Kéo hai cạnh để mở rộng ngang · Kéo góc để resize"
                     : "Chọn và kéo nút · Kéo góc dưới phải để thay đổi kích thước"
             )
             .font(.system(size: 12, weight: .medium))
@@ -1662,6 +1662,8 @@ private struct ManicSkinFLEXScreenOverlay: View {
     @State private var moveStartFrame: CGRect?
     @State private var resizeStartFrame: CGRect?
     @State private var pinchStartFrame: CGRect?
+    @State private var leadingResizeStartFrame: CGRect?
+    @State private var trailingResizeStartFrame: CGRect?
 
     var body: some View {
         let rect = CGRect(
@@ -1765,6 +1767,120 @@ private struct ManicSkinFLEXScreenOverlay: View {
                         .onEnded { _ in resizeStartFrame = nil }
                 )
         }
+        .overlay(alignment: .leading) {
+            horizontalEdgeHandle(
+                symbol: "chevron.left",
+                isLeading: true
+            )
+            .offset(x: -14)
+        }
+        .overlay(alignment: .trailing) {
+            horizontalEdgeHandle(
+                symbol: "chevron.right",
+                isLeading: false
+            )
+            .offset(x: 14)
+        }
+    }
+
+    private func horizontalEdgeHandle(
+        symbol: String,
+        isLeading: Bool
+    ) -> some View {
+        Capsule()
+            .fill(Color.cyan)
+            .frame(width: 28, height: 58)
+            .overlay {
+                Image(systemName: symbol)
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(.black)
+            }
+            .overlay(Capsule().stroke(Color.white, lineWidth: 1.5))
+            .contentShape(Rectangle().size(width: 42, height: 72))
+            .accessibilityLabel(isLeading ? "Resize left edge" : "Resize right edge")
+            .highPriorityGesture(horizontalEdgeResizeGesture(isLeading: isLeading))
+    }
+
+    private func horizontalEdgeResizeGesture(isLeading: Bool) -> some Gesture {
+        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+            .onChanged { value in
+                let start: CGRect
+                if isLeading {
+                    if leadingResizeStartFrame == nil {
+                        moveStartFrame = nil
+                        resizeStartFrame = nil
+                        pinchStartFrame = nil
+                        leadingResizeStartFrame = frame
+                    }
+                    guard let initial = leadingResizeStartFrame else { return }
+                    start = initial
+                } else {
+                    if trailingResizeStartFrame == nil {
+                        moveStartFrame = nil
+                        resizeStartFrame = nil
+                        pinchStartFrame = nil
+                        trailingResizeStartFrame = frame
+                    }
+                    guard let initial = trailingResizeStartFrame else { return }
+                    start = initial
+                }
+
+                let dx = value.translation.width / max(canvasSize.width, 1)
+                frame = Self.resizedHorizontalEdge(
+                    start,
+                    translation: dx,
+                    fromLeading: isLeading,
+                    canvasSize: canvasSize
+                )
+            }
+            .onEnded { _ in
+                let optimizedFrame = Self.optimized(frame, canvasSize: canvasSize)
+                withAnimation(.easeOut(duration: 0.12)) {
+                    frame = optimizedFrame
+                }
+                if isLeading {
+                    leadingResizeStartFrame = nil
+                } else {
+                    trailingResizeStartFrame = nil
+                }
+            }
+    }
+
+    private static func resizedHorizontalEdge(
+        _ initial: CGRect,
+        translation: CGFloat,
+        fromLeading: Bool,
+        canvasSize: CGSize
+    ) -> CGRect {
+        let minimumWidth = min(1.0, max(0.06, 50 / max(canvasSize.width, 1)))
+        let fixedLeft = initial.minX
+        let fixedRight = initial.maxX
+
+        if fromLeading {
+            let proposedLeft = initial.minX + translation
+            let newLeft = min(
+                max(proposedLeft, 0),
+                max(fixedRight - minimumWidth, 0)
+            )
+            return CGRect(
+                x: newLeft,
+                y: initial.minY,
+                width: fixedRight - newLeft,
+                height: initial.height
+            )
+        }
+
+        let proposedRight = initial.maxX + translation
+        let newRight = min(
+            max(proposedRight, min(fixedLeft + minimumWidth, 1)),
+            1
+        )
+        return CGRect(
+            x: fixedLeft,
+            y: initial.minY,
+            width: newRight - fixedLeft,
+            height: initial.height
+        )
     }
 
     private static func scaledAroundCenter(
