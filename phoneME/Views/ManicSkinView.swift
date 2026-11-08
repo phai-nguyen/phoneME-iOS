@@ -457,7 +457,9 @@ private final class ManicSkinNativeThumbstickView: UIView {
     private var trackingOrigin: CGPoint?
     private var previousDirection: Direction?
     private var isActivated = false
-    private var activeKeys = Set<J2MEKey>()
+    // Match DeltaCore: horizontal and vertical inputs have independent lifecycles.
+    private var activeHorizontalKey: J2MEKey?
+    private var activeVerticalKey: J2MEKey?
     private var knobCenter = CGPoint.zero
 
     override init(frame: CGRect) {
@@ -649,34 +651,47 @@ private final class ManicSkinNativeThumbstickView: UIView {
         }
         isActivated = nowActivated
 
-        var nextKeys = Set<J2MEKey>()
-        if xAxis < 0 { nextKeys.insert(.left) }
-        if xAxis > 0 { nextKeys.insert(.right) }
-        if yAxis > 0 { nextKeys.insert(.up) }
-        if yAxis < 0 { nextKeys.insert(.down) }
-        updateKeys(nextKeys)
+        updateAxes(xAxis: xAxis, yAxis: yAxis)
     }
 
-    private func updateKeys(_ nextKeys: Set<J2MEKey>) {
-        let released = activeKeys.subtracting(nextKeys)
-            .sorted { $0.rawValue < $1.rawValue }
-        let pressed = nextKeys.subtracting(activeKeys)
-            .sorted { $0.rawValue < $1.rawValue }
+    private func updateAxis(_ nextKey: J2MEKey?, activeKey: inout J2MEKey?) {
+        guard activeKey != nextKey else { return }
 
-        if !released.isEmpty {
-            onKeysChanged?(released, false)
+        if let currentKey = activeKey {
+            onKeysChanged?([currentKey], false)
         }
-        if !pressed.isEmpty {
-            onKeysChanged?(pressed, true)
+        if let nextKey {
+            onKeysChanged?([nextKey], true)
         }
-        activeKeys = nextKeys
+        activeKey = nextKey
+    }
+
+    private func updateAxes(xAxis: Double, yAxis: Double) {
+        let horizontalKey: J2MEKey?
+        if xAxis < 0 {
+            horizontalKey = .left
+        } else if xAxis > 0 {
+            horizontalKey = .right
+        } else {
+            horizontalKey = nil
+        }
+
+        let verticalKey: J2MEKey?
+        if yAxis > 0 {
+            verticalKey = .up
+        } else if yAxis < 0 {
+            verticalKey = .down
+        } else {
+            verticalKey = nil
+        }
+
+        // Releasing one axis must never change the other axis' held key.
+        updateAxis(horizontalKey, activeKey: &activeHorizontalKey)
+        updateAxis(verticalKey, activeKey: &activeVerticalKey)
     }
 
     private func releaseKeys() {
-        guard !activeKeys.isEmpty else { return }
-        let keys = activeKeys.sorted { $0.rawValue < $1.rawValue }
-        activeKeys.removeAll()
-        onKeysChanged?(keys, false)
+        updateAxes(xAxis: 0, yAxis: 0)
     }
 
     private func resetKnobToCenter() {
