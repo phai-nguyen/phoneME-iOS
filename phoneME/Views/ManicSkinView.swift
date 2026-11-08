@@ -1551,6 +1551,29 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
         }
     }
 
+    private func renderedThumbstickFrame(
+        _ normalized: CGRect,
+        mappingSize: CGSize,
+        canvasSize: CGSize
+    ) -> CGRect {
+        let uniformScale = min(
+            canvasSize.width / max(mappingSize.width, 1),
+            canvasSize.height / max(mappingSize.height, 1)
+        )
+        let width = normalized.width * mappingSize.width * uniformScale
+        let height = normalized.height * mappingSize.height * uniformScale
+        let center = CGPoint(
+            x: normalized.midX * canvasSize.width,
+            y: normalized.midY * canvasSize.height
+        )
+        return CGRect(
+            x: center.x - width / 2,
+            y: center.y - height / 2,
+            width: width,
+            height: height
+        )
+    }
+
     private func renderedFrame(
         _ normalized: CGRect,
         origin: CGPoint,
