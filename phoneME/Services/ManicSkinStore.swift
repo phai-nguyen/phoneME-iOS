@@ -419,17 +419,27 @@ final class ManicSkinStore: ObservableObject {
             }
         }
 
-        try FileManager.default.createDirectory(
-            at: skinsDirectoryURL,
-            withIntermediateDirectories: true
-        )
+        // UIDocumentPicker is configured with asCopy: true, but make one more
+        // private copy so all subsequent reads are independent of provider URLs.
+        let localImportURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("phoneME-ManicSkin-\\(UUID().uuidString)")
+            .appendingPathExtension("manicskin")
+        defer {
+            try? FileManager.default.removeItem(at: localImportURL)
+        }
+        try FileManager.default.copyItem(at: sourceURL, to: localImportURL)
 
-        let sourceData = try Data(contentsOf: sourceURL, options: [.mappedIfSafe])
+        let sourceData = try Data(contentsOf: localImportURL, options: [.mappedIfSafe])
         guard sourceData.count <= 32 * 1024 * 1024 else {
             throw ManicSkinArchiveError.tooLarge
         }
         let digest = SHA256.hash(data: sourceData)
         let id = digest.map { String(format: "%02x", $0) }.joined()
+
+        try FileManager.default.createDirectory(
+            at: skinsDirectoryURL,
+            withIntermediateDirectories: true
+        )
         let finalURL = skinsDirectoryURL.appendingPathComponent(id, isDirectory: true)
 
         if FileManager.default.fileExists(atPath: finalURL.path) {
@@ -440,11 +450,11 @@ final class ManicSkinStore: ObservableObject {
         }
 
         let stagingURL = skinsDirectoryURL.appendingPathComponent(
-            ".import-\(UUID().uuidString)",
+            ".import-\\(UUID().uuidString)",
             isDirectory: true
         )
         do {
-            try ManicSkinArchive.extract(from: sourceURL, to: stagingURL)
+            try ManicSkinArchive.extract(from: localImportURL, to: stagingURL)
             _ = try ManicSkin.read(from: stagingURL, id: id)
             try FileManager.default.moveItem(at: stagingURL, to: finalURL)
         } catch {

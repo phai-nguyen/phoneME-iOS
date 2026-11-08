@@ -56,7 +56,7 @@
             <string>Alternate</string>
             <key>LSItemContentTypes</key>
             <array>
-                <string>dev.phoneme.manicskin</string>
+                <string>public.aoshuang.skin</string>
             </array>
         </dict>
     </array>
@@ -93,8 +93,8 @@
             <string>Java Archive</string>
             <key>UTTypeConformsTo</key>
             <array>
-                <string>public.zip-archive</string>
                 <string>public.data</string>
+                <string>public.content</string>
             </array>
             <key>UTTypeTagSpecification</key>
             <dict>
@@ -111,7 +111,7 @@
         </dict>
         <dict>
             <key>UTTypeIdentifier</key>
-            <string>dev.phoneme.manicskin</string>
+            <string>public.aoshuang.skin</string>
             <key>UTTypeDescription</key>
             <string>ManicEMU Controller Skin</string>
             <key>UTTypeConformsTo</key>

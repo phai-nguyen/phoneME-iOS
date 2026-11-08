@@ -171,11 +171,25 @@ struct SettingsView: View {
             }
 
         }
+#if os(iOS)
+        .sheet(isPresented: $isImportingManicSkin) {
+            ManicSkinDocumentPicker(
+                onPick: { url in
+                    isImportingManicSkin = false
+                    do {
+                        _ = try manicSkinStore.importSkin(from: url)
+                    } catch {
+                        manicSkinErrorMessage = error.localizedDescription
+                    }
+                },
+                onCancel: {
+                    isImportingManicSkin = false
+                }
+            )
+        }
+#else
         .fileImporter(
             isPresented: $isImportingManicSkin,
-            // .data is the broad regular-file type. The ManicEMU UTI conforms to
-            // public.data; using public.item also includes directories and can
-            // leave some iOS Files providers in browse-only mode.
             allowedContentTypes: [.data],
             allowsMultipleSelection: false
         ) { result in
@@ -191,6 +205,7 @@ struct SettingsView: View {
                 manicSkinErrorMessage = error.localizedDescription
             }
         }
+#endif
         .navigationTitle("Settings")
 #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -328,6 +343,67 @@ struct SettingsView: View {
     }
 #endif
 }
+
+
+#if os(iOS)
+@MainActor
+private struct ManicSkinDocumentPicker: UIViewControllerRepresentable {
+    let onPick: (URL) -> Void
+    let onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPick: onPick, onCancel: onCancel)
+    }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let skinType = UTType("public.aoshuang.skin")
+            ?? UTType(filenameExtension: "manicskin", conformingTo: .data)
+            ?? .data
+
+        // Match ManicEMU: request a copy in the app container before importing.
+        let picker = UIDocumentPickerViewController(
+            forOpeningContentTypes: [skinType],
+            asCopy: true
+        )
+        picker.delegate = context.coordinator
+        picker.allowsMultipleSelection = false
+        picker.shouldShowFileExtensions = true
+        picker.modalPresentationStyle = .formSheet
+        return picker
+    }
+
+    func updateUIViewController(
+        _ controller: UIDocumentPickerViewController,
+        context: Context
+    ) {}
+
+    @MainActor
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        private let onPick: (URL) -> Void
+        private let onCancel: () -> Void
+
+        init(onPick: @escaping (URL) -> Void, onCancel: @escaping () -> Void) {
+            self.onPick = onPick
+            self.onCancel = onCancel
+        }
+
+        func documentPicker(
+            _ controller: UIDocumentPickerViewController,
+            didPickDocumentsAt urls: [URL]
+        ) {
+            guard let url = urls.first else {
+                onCancel()
+                return
+            }
+            onPick(url)
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            onCancel()
+        }
+    }
+}
+#endif
 
 struct ProfilesView: View {
     @EnvironmentObject private var templates: ProfileTemplateStore
