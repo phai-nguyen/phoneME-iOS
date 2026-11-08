@@ -4,11 +4,15 @@ import Foundation
 struct ManicSkinItem: Identifiable {
     let id: String
     let frame: CGRect
+    let extendedFrame: CGRect
     let normalAssetURL: URL?
     let selectedAssetURL: URL?
     let directKeys: [J2MEKey]
     let directionalKeys: [String: J2MEKey]
     let thumbstickSize: CGSize?
+    let isTouchScreen: Bool
+    let isSwitchButton: Bool
+    let selfRetracting: Bool
 
     var hasDirectionalInput: Bool {
         !directionalKeys.isEmpty
@@ -16,6 +20,15 @@ struct ManicSkinItem: Identifiable {
 
     var isThumbstick: Bool {
         thumbstickSize != nil && hasDirectionalInput
+    }
+
+    // DeltaCore gives thumbsticks, touch surfaces, and switches their own
+    // item.frame hit area. Ordinary buttons and D-pads use extendedFrame.
+    var hitFrame: CGRect {
+        if isThumbstick || isTouchScreen || isSwitchButton {
+            return frame
+        }
+        return extendedFrame
     }
 }
 
@@ -31,14 +44,66 @@ struct ManicSkin: Identifiable {
     let name: String
     let identifier: String
     let folderURL: URL
-    let portraitLayout: ManicSkinLayout
-    let landscapeLayout: ManicSkinLayout?
 
-    func layout(for size: CGSize) -> ManicSkinLayout {
-        if size.width > size.height {
-            return landscapeLayout ?? portraitLayout
+    private let standardPortraitLayout: ManicSkinLayout?
+    private let standardLandscapeLayout: ManicSkinLayout?
+    private let edgeToEdgePortraitLayout: ManicSkinLayout?
+    private let edgeToEdgeLandscapeLayout: ManicSkinLayout?
+
+    func layout(for size: CGSize, safeAreaBottom: CGFloat) -> ManicSkinLayout {
+        let prefersEdgeToEdge = safeAreaBottom > 0.5
+        let isLandscape = size.width > size.height
+
+        let preferredPortrait = prefersEdgeToEdge
+            ? edgeToEdgePortraitLayout
+            : standardPortraitLayout
+        let preferredLandscape = prefersEdgeToEdge
+            ? edgeToEdgeLandscapeLayout
+            : standardLandscapeLayout
+        let fallbackPortrait = prefersEdgeToEdge
+            ? standardPortraitLayout
+            : edgeToEdgePortraitLayout
+        let fallbackLandscape = prefersEdgeToEdge
+            ? standardLandscapeLayout
+            : edgeToEdgeLandscapeLayout
+
+        if isLandscape {
+            return preferredLandscape
+                ?? fallbackLandscape
+                ?? preferredPortrait
+                ?? fallbackPortrait
+                ?? Self.requiredLayout(
+                    standardPortraitLayout,
+                    edgeToEdgePortraitLayout,
+                    standardLandscapeLayout,
+                    edgeToEdgeLandscapeLayout
+                )
         }
-        return portraitLayout
+
+        return preferredPortrait
+            ?? fallbackPortrait
+            ?? preferredLandscape
+            ?? fallbackLandscape
+            ?? Self.requiredLayout(
+                standardPortraitLayout,
+                edgeToEdgePortraitLayout,
+                standardLandscapeLayout,
+                edgeToEdgeLandscapeLayout
+            )
+    }
+
+    private static func requiredLayout(
+        _ standardPortrait: ManicSkinLayout?,
+        _ edgePortrait: ManicSkinLayout?,
+        _ standardLandscape: ManicSkinLayout?,
+        _ edgeLandscape: ManicSkinLayout?
+    ) -> ManicSkinLayout {
+        // A skin is validated to contain at least one representation before
+        // this method can be called.
+        standardPortrait
+            ?? edgePortrait
+            ?? standardLandscape
+            ?? edgeLandscape!
     }
 
     static func read(from folderURL: URL, id: String) throws -> ManicSkin {
@@ -61,19 +126,36 @@ struct ManicSkin: Identifiable {
 
         let representations = root["representations"] as? [String: Any] ?? [:]
         let iphone = representations["iphone"] as? [String: Any] ?? representations
-        let selectedPlatform = (iphone["standard"] as? [String: Any])
-            ?? (iphone["edgeToEdge"] as? [String: Any])
-            ?? iphone
+        let hasDisplayVariants = iphone["standard"] != nil || iphone["edgeToEdge"] != nil
 
-        let parsedPortrait = try parseLayout(
-            selectedPlatform["portrait"] as? [String: Any],
+        // Keep both iPhone display representations. DeltaCore selects between
+        // them using the active window's safe-area traits instead of always
+        // preferring Standard when both are present.
+        let standardRepresentation = iphone["standard"] as? [String: Any]
+            ?? (hasDisplayVariants ? nil : iphone)
+        let edgeToEdgeRepresentation = iphone["edgeToEdge"] as? [String: Any]
+
+        let standardPortrait = try parseLayout(
+            standardRepresentation?["portrait"] as? [String: Any],
             folderURL: folderURL
         )
-        let landscape = try parseLayout(
-            selectedPlatform["landscape"] as? [String: Any],
+        let standardLandscape = try parseLayout(
+            standardRepresentation?["landscape"] as? [String: Any],
             folderURL: folderURL
         )
-        guard let defaultLayout = parsedPortrait ?? landscape else {
+        let edgePortrait = try parseLayout(
+            edgeToEdgeRepresentation?["portrait"] as? [String: Any],
+            folderURL: folderURL
+        )
+        let edgeLandscape = try parseLayout(
+            edgeToEdgeRepresentation?["landscape"] as? [String: Any],
+            folderURL: folderURL
+        )
+
+        guard standardPortrait != nil
+                || standardLandscape != nil
+                || edgePortrait != nil
+                || edgeLandscape != nil else {
             throw ManicSkinImportError.invalidMetadata
         }
 
@@ -82,8 +164,10 @@ struct ManicSkin: Identifiable {
             name: name,
             identifier: identifier,
             folderURL: folderURL,
-            portraitLayout: defaultLayout,
-            landscapeLayout: landscape
+            standardPortraitLayout: standardPortrait,
+            standardLandscapeLayout: standardLandscape,
+            edgeToEdgePortraitLayout: edgePortrait,
+            edgeToEdgeLandscapeLayout: edgeLandscape
         )
     }
 
@@ -105,13 +189,30 @@ struct ManicSkin: Identifiable {
         let backgroundName = assets["resizable"] as? String
             ?? assets["background"] as? String
         let backgroundURL = try assetURL(backgroundName, folderURL: folderURL)
+        let representationEdges = parseExtendedEdges(value["extendedEdges"])
 
         var items: [ManicSkinItem] = []
         let rawItems = value["items"] as? [[String: Any]] ?? []
         for (index, rawItem) in rawItems.enumerated() {
-            guard let frame = normalizedFrame(
-                rawItem["frame"],
-                mappingSize: mappingSize
+            guard let rawFrame = rawRect(rawItem["frame"]) else {
+                continue
+            }
+
+            let placement = (rawItem["placement"] as? String)?.lowercased() ?? "controller"
+            let itemEdges = mergedEdges(
+                inherited: representationEdges,
+                overrides: parseExtendedEdges(rawItem["extendedEdges"]),
+                rawOverrides: rawItem["extendedEdges"]
+            )
+            let rawExtendedFrame = applying(itemEdges, to: rawFrame)
+            guard let frame = normalizedRect(
+                rawFrame,
+                mappingSize: mappingSize,
+                placement: placement
+            ), let extendedFrame = normalizedRect(
+                rawExtendedFrame,
+                mappingSize: mappingSize,
+                placement: placement
             ) else {
                 continue
             }
@@ -129,39 +230,57 @@ struct ManicSkin: Identifiable {
                knobWidth > 0, knobHeight > 0,
                knobWidth <= mappingSize.width * 2,
                knobHeight <= mappingSize.height * 2 {
-                thumbstickSize = CGSize(width: knobWidth, height: knobHeight)
+                thumbstickSize = CGSize(
+                    width: knobWidth / mappingSize.width,
+                    height: knobHeight / mappingSize.height
+                )
             } else {
                 thumbstickSize = nil
             }
-            let (directKeys, directionalKeys) = parseInputs(rawItem["inputs"])
 
-            // Keep visual-only ManicEMU controls (for example the FLEX
-            // and MENU buttons). Some core-specific inputs have no MIDP key
-            // equivalent in phoneME yet, but their artwork should still render.
-            guard !directKeys.isEmpty || !directionalKeys.isEmpty
-                    || normalURL != nil || selectedURL != nil else {
+            let inputs = parseInputs(rawItem["inputs"])
+            let selfRetracting = rawItem["selfRetracting"] as? Bool ?? true
+
+            // Artwork-only items remain visible. Touch-screen items are kept
+            // even though their x/y inputs are pointer coordinates, not keys.
+            guard !inputs.directKeys.isEmpty
+                    || !inputs.directionalKeys.isEmpty
+                    || inputs.isTouchScreen
+                    || inputs.isSwitchButton
+                    || normalURL != nil
+                    || selectedURL != nil else {
                 continue
             }
 
             items.append(ManicSkinItem(
                 id: "item-\(index)",
                 frame: frame,
+                extendedFrame: extendedFrame,
                 normalAssetURL: normalURL,
                 selectedAssetURL: selectedURL,
-                directKeys: directKeys,
-                directionalKeys: directionalKeys,
-                thumbstickSize: thumbstickSize
+                directKeys: inputs.directKeys,
+                directionalKeys: inputs.directionalKeys,
+                thumbstickSize: thumbstickSize,
+                isTouchScreen: inputs.isTouchScreen,
+                isSwitchButton: inputs.isSwitchButton,
+                selfRetracting: selfRetracting
             ))
         }
 
         let screens = value["screens"] as? [[String: Any]] ?? []
         let screenFrame: CGRect
-        if let outputFrame = screens.first?["outputFrame"],
-           let normalized = normalizedOutputFrame(
-               outputFrame,
-               mappingSize: mappingSize
-           ) {
-            screenFrame = normalized
+        if let firstScreen = screens.first {
+            let isAppPlacement = (firstScreen["placement"] as? String) == "app"
+            if let outputFrame = firstScreen["outputFrame"],
+               let normalized = normalizedOutputFrame(
+                   outputFrame,
+                   mappingSize: mappingSize,
+                   alreadyNormalized: isAppPlacement
+               ) {
+                screenFrame = normalized
+            } else {
+                screenFrame = CGRect(x: 0, y: 0, width: 1, height: 1)
+            }
         } else {
             screenFrame = CGRect(x: 0, y: 0, width: 1, height: 1)
         }
@@ -171,6 +290,90 @@ struct ManicSkin: Identifiable {
             backgroundAssetURL: backgroundURL,
             screenFrame: screenFrame,
             items: items
+        )
+    }
+
+    private struct ExtendedEdges {
+        var top: CGFloat = 0
+        var bottom: CGFloat = 0
+        var left: CGFloat = 0
+        var right: CGFloat = 0
+    }
+
+    private static func parseExtendedEdges(_ value: Any?) -> ExtendedEdges {
+        guard let dictionary = value as? [String: Any] else {
+            return ExtendedEdges()
+        }
+        return ExtendedEdges(
+            top: number(dictionary["top"]) ?? 0,
+            bottom: number(dictionary["bottom"]) ?? 0,
+            left: number(dictionary["left"]) ?? 0,
+            right: number(dictionary["right"]) ?? 0
+        )
+    }
+
+    private static func mergedEdges(
+        inherited: ExtendedEdges,
+        overrides: ExtendedEdges,
+        rawOverrides: Any?
+    ) -> ExtendedEdges {
+        guard let dictionary = rawOverrides as? [String: Any] else {
+            return inherited
+        }
+        return ExtendedEdges(
+            top: dictionary["top"] == nil ? inherited.top : overrides.top,
+            bottom: dictionary["bottom"] == nil ? inherited.bottom : overrides.bottom,
+            left: dictionary["left"] == nil ? inherited.left : overrides.left,
+            right: dictionary["right"] == nil ? inherited.right : overrides.right
+        )
+    }
+
+    private static func applying(
+        _ edges: ExtendedEdges,
+        to frame: CGRect
+    ) -> CGRect {
+        CGRect(
+            x: frame.minX - edges.left,
+            y: frame.minY - edges.top,
+            width: frame.width + edges.left + edges.right,
+            height: frame.height + edges.top + edges.bottom
+        )
+    }
+
+    private static func rawRect(_ value: Any?) -> CGRect? {
+        guard let frame = value as? [String: Any],
+              let x = number(frame["x"]),
+              let y = number(frame["y"]),
+              let width = number(frame["width"]),
+              let height = number(frame["height"]),
+              width > 0, height > 0 else {
+            return nil
+        }
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    private static func normalizedRect(
+        _ rect: CGRect,
+        mappingSize: CGSize,
+        placement: String
+    ) -> CGRect? {
+        guard mappingSize.width > 0, mappingSize.height > 0 else {
+            return nil
+        }
+        guard abs(rect.minX) <= mappingSize.width * 2,
+              abs(rect.minY) <= mappingSize.height * 2,
+              rect.width <= mappingSize.width * 2,
+              rect.height <= mappingSize.height * 2 else {
+            return nil
+        }
+        if placement == "app" {
+            return rect
+        }
+        return CGRect(
+            x: rect.minX / mappingSize.width,
+            y: rect.minY / mappingSize.height,
+            width: rect.width / mappingSize.width,
+            height: rect.height / mappingSize.height
         )
     }
 
@@ -191,110 +394,71 @@ struct ManicSkin: Identifiable {
 
     private static func normalizedOutputFrame(
         _ value: Any?,
-        mappingSize: CGSize
+        mappingSize: CGSize,
+        alreadyNormalized: Bool
     ) -> CGRect? {
-        guard let frame = value as? [String: Any],
-              let x = number(frame["x"]),
-              let y = number(frame["y"]),
-              let width = number(frame["width"]),
-              let height = number(frame["height"]),
-              width > 0, height > 0 else {
-            return nil
+        guard let frame = rawRect(value) else { return nil }
+        if alreadyNormalized {
+            return frame
         }
-
-        // RetroSkinner writes outputFrame in mappingSize pixel coordinates.
-        // Some ManicEMU skin revisions store an already-normalized rectangle.
-        if abs(x) <= 2, abs(y) <= 2, width <= 2, height <= 2 {
-            return CGRect(x: x, y: y, width: width, height: height)
+        if abs(frame.minX) <= 2, abs(frame.minY) <= 2,
+           frame.width <= 2, frame.height <= 2 {
+            return frame
         }
-
-        guard mappingSize.width > 0, mappingSize.height > 0,
-              abs(x) <= mappingSize.width * 2,
-              abs(y) <= mappingSize.height * 2,
-              width <= mappingSize.width * 2,
-              height <= mappingSize.height * 2 else {
-            return nil
-        }
-
-        return CGRect(
-            x: x / mappingSize.width,
-            y: y / mappingSize.height,
-            width: width / mappingSize.width,
-            height: height / mappingSize.height
-        )
-    }
-
-    private static func normalizedFrame(
-        _ value: Any?,
-        mappingSize: CGSize
-    ) -> CGRect? {
-        guard let frame = value as? [String: Any],
-              let x = number(frame["x"]),
-              let y = number(frame["y"]),
-              let width = number(frame["width"]),
-              let height = number(frame["height"]),
-              width > 0, height > 0,
-              width <= mappingSize.width * 2,
-              height <= mappingSize.height * 2,
-              abs(x) <= mappingSize.width * 2,
-              abs(y) <= mappingSize.height * 2 else {
-            return nil
-        }
-        return CGRect(
-            x: x / mappingSize.width,
-            y: y / mappingSize.height,
-            width: width / mappingSize.width,
-            height: height / mappingSize.height
+        return normalizedRect(
+            frame,
+            mappingSize: mappingSize,
+            placement: "controller"
         )
     }
 
     private static func parseInputs(
         _ value: Any?
-    ) -> ([J2MEKey], [String: J2MEKey]) {
+    ) -> (
+        directKeys: [J2MEKey],
+        directionalKeys: [String: J2MEKey],
+        isTouchScreen: Bool,
+        isSwitchButton: Bool
+    ) {
         var direct = [J2MEKey]()
         var directional = [String: J2MEKey]()
+        var isTouchScreen = false
+        var isSwitchButton = false
 
         if let inputs = value as? [String: Any] {
-            for (direction, rawValue) in inputs {
-                guard let rawValue = rawValue as? String,
-                      let key = key(for: rawValue) else {
-                    continue
-                }
-                let normalizedDirection = direction.lowercased()
-                if ["up", "down", "left", "right"].contains(normalizedDirection) {
-                    directional[normalizedDirection] = key
-                } else {
-                    direct.append(key)
+            if inputs["x"] != nil && inputs["y"] != nil {
+                // DeltaCore models this as a continuous pointer surface.
+                // These tokens must never be translated into Java key codes.
+                isTouchScreen = true
+            } else {
+                for (direction, rawValue) in inputs {
+                    guard let rawValue = rawValue as? String,
+                          let key = key(for: rawValue) else {
+                        continue
+                    }
+                    let normalizedDirection = direction.lowercased()
+                    if ["up", "down", "left", "right"].contains(normalizedDirection) {
+                        directional[normalizedDirection] = key
+                    } else {
+                        direct.append(key)
+                    }
                 }
             }
         } else if let values = value as? [String] {
-            let cardinalValues = values.compactMap { normalizedDirection($0) }
-            if Set(cardinalValues).count >= 2 {
-                for direction in Set(cardinalValues) {
-                    if let key = key(for: direction) {
-                        directional[direction] = key
-                    }
-                }
-            } else {
-                direct = values.compactMap(key(for:))
+            // In the ManicEMU/DeltaCore format, an array is a standard button
+            // mapping, even when a value happens to be "up" or "left".
+            direct = values.compactMap(key(for:))
+        } else if value is String {
+            // A single string is a switch input in the source format.
+            isSwitchButton = true
+            if let value = value as? String, let key = key(for: value) {
+                direct = [key]
             }
-        } else if let single = value as? String, let key = key(for: single) {
-            direct = [key]
         }
 
         var seen = Set<J2MEKey>()
         direct = direct.filter { seen.insert($0).inserted }
-        return (direct, directional)
-    }
-
-    private static func normalizedDirection(_ value: String) -> String? {
-        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "up": return "up"
-        case "down": return "down"
-        case "left": return "left"
-        case "right": return "right"
-        default: return nil
-        }
+        return (direct, directional, isTouchScreen, isSwitchButton)
     }
 
     private static func key(for value: String) -> J2MEKey? {
@@ -435,8 +599,6 @@ final class ManicSkinStore: ObservableObject {
             }
         }
 
-        // UIDocumentPicker is configured with asCopy: true, but make one more
-        // private copy so all subsequent reads are independent of provider URLs.
         let localImportURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("phoneME-ManicSkin-\(UUID().uuidString)")
             .appendingPathExtension("manicskin")
