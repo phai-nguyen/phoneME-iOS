@@ -191,8 +191,6 @@ struct SettingsView: View {
                 manicSkinErrorMessage = error.localizedDescription
             }
         }
-        .fileDialogConfirmationLabel(Text("Import"))
-        .fileDialogMessage(Text("Choose a ManicEMU controller skin archive (.manicskin)."))
         .navigationTitle("Settings")
 #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
