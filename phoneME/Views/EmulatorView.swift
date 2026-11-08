@@ -7,6 +7,21 @@ import MetalKit
 import AppKit
 #endif
 
+#if os(iOS)
+private struct PhoneMEHomeIndicatorVisibilityModifier: ViewModifier {
+    let hidden: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 16.0, *) {
+            content.persistentSystemOverlays(hidden ? .hidden : .automatic)
+        } else {
+            content
+        }
+    }
+}
+#endif
+
 private struct KeyboardAdjustmentSnapshot {
     let profile: GameProfile
     let showKeypad: Bool
@@ -283,6 +298,11 @@ struct EmulatorView: View {
         .coordinateSpace(name: "emulatorCaptureWindow")
 #if os(iOS)
         .statusBarHidden(!isStatusBarVisible)
+        .modifier(
+            PhoneMEHomeIndicatorVisibilityModifier(
+                hidden: currentInterfaceOrientation() == .landscape
+            )
+        )
 #endif
         .onAppear {
             if !playNativeChromeDefaultApplied {
