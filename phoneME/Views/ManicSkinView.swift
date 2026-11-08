@@ -112,16 +112,28 @@ struct ManicSkinView<ScreenContent: View>: View {
                     .clipped()
 
                 ForEach(layout.items) { item in
-                    let visualFrame = renderedFrame(
-                        item.frame,
-                        origin: origin,
-                        canvasSize: canvasSize
-                    )
-                    let captureFrame = renderedFrame(
-                        item.hitFrame,
-                        origin: origin,
-                        canvasSize: canvasSize
-                    )
+                    let visualFrame = item.isThumbstick
+                        ? renderedThumbstickFrame(
+                            item.frame,
+                            mappingSize: layout.mappingSize,
+                            canvasSize: canvasSize
+                        )
+                        : renderedFrame(
+                            item.frame,
+                            origin: origin,
+                            canvasSize: canvasSize
+                        )
+                    let captureFrame = item.isThumbstick
+                        ? renderedThumbstickFrame(
+                            item.hitFrame,
+                            mappingSize: layout.mappingSize,
+                            canvasSize: canvasSize
+                        )
+                        : renderedFrame(
+                            item.hitFrame,
+                            origin: origin,
+                            canvasSize: canvasSize
+                        )
                     let animationBeginFrame = item.animation.map {
                         renderedFrame($0.beginFrame, origin: origin, canvasSize: canvasSize)
                     }.map {
@@ -144,7 +156,12 @@ struct ManicSkinView<ScreenContent: View>: View {
                     }
                     ManicSkinItemView(
                         item: item,
-                        canvasScale: canvasScale,
+                        canvasScale: item.isThumbstick
+                            ? CGSize(
+                                width: min(canvasScale.width, canvasScale.height),
+                                height: min(canvasScale.width, canvasScale.height)
+                            )
+                            : canvasScale,
                         visualSize: visualFrame.size,
                         visualOrigin: CGPoint(
                             x: visualFrame.minX - captureFrame.minX,
@@ -206,7 +223,34 @@ struct ManicSkinView<ScreenContent: View>: View {
         }
     }
 
+    private func renderedThumbstickFrame(
+        _ normalized: CGRect,
+        mappingSize: CGSize,
+        canvasSize: CGSize
+    ) -> CGRect {
+        let uniformScale = min(
+            canvasSize.width / max(mappingSize.width, 1),
+            canvasSize.height / max(mappingSize.height, 1)
+        )
+        let width = normalized.width * mappingSize.width * uniformScale
+        let height = normalized.height * mappingSize.height * uniformScale
+        let center = CGPoint(
+            x: normalized.midX * canvasSize.width,
+            y: normalized.midY * canvasSize.height
+        )
+        return CGRect(
+            x: center.x - width / 2,
+            y: center.y - height / 2,
+            width: width,
+            height: height
+        )
+    }
+
     private func renderedFrame(
+        _ normalized: CGRect,
+        origin: CGPoint,
+        canvasSize: CGSize
+    ) -> CGRect {    private func renderedFrame(
         _ normalized: CGRect,
         origin: CGPoint,
         canvasSize: CGSize
@@ -488,7 +532,11 @@ private struct ManicSkinItemView: View {
 
     @ViewBuilder
     private var artwork: some View {
-        if isPressed,
+        // A ManicEMU thumbstick's image is the movable knob, not a static
+        // background. The native thumbstick view owns its only rendering.
+        if item.isThumbstick {
+            EmptyView()
+        } else if isPressed,
            let selectedURL = item.selectedAssetURL,
            let image = ManicSkinPDFRenderer.image(at: selectedURL) {
             Image(uiImage: image)
@@ -944,7 +992,8 @@ private final class ManicSkinNativeThumbstickView: UIView {
         onHaptic: @escaping () -> Void,
         onHapticPrepare: @escaping () -> Void
     ) {
-        let imageChanged = self.item?.normalAssetURL != item.normalAssetURL
+        let imageChanged = self.item?.thumbstickAssetURL != item.thumbstickAssetURL
+            || self.item?.normalAssetURL != item.normalAssetURL
         self.item = item
         self.canvasScale = canvasScale
         self.onKeysChanged = onKeysChanged
@@ -952,7 +1001,8 @@ private final class ManicSkinNativeThumbstickView: UIView {
         self.onHapticPrepare = onHapticPrepare
 
         if imageChanged || knobImageView.image == nil {
-            knobImageView.image = item.normalAssetURL.flatMap {
+            let knobURL = item.thumbstickAssetURL ?? item.normalAssetURL
+            knobImageView.image = knobURL.flatMap {
                 ManicSkinPDFRenderer.image(at: $0)
             }
         }
@@ -964,12 +1014,12 @@ private final class ManicSkinNativeThumbstickView: UIView {
 
         let size: CGSize
         if let knob = item?.thumbstickSize {
-            // Thumbstick dimensions are stored in mappingSize pixels.
-            // DeltaCore scales the width and height against the host bounds
-            // independently, just like the controller item frame.
+            // Keep the circular joystick knob circular even when the overall
+            // skin canvas is non-uniformly stretched to device bounds.
+            let uniformScale = min(canvasScale.width, canvasScale.height)
             size = CGSize(
-                width: max(knob.width * canvasScale.width, 1),
-                height: max(knob.height * canvasScale.height, 1)
+                width: max(knob.width * uniformScale, 1),
+                height: max(knob.height * uniformScale, 1)
             )
         } else {
             size = bounds.size
@@ -1297,11 +1347,17 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
 
                 ForEach(layout.items.filter { !$0.isTouchScreen }) { item in
                     let normalizedFrame = itemFrames[item.id] ?? item.frame
-                    let visualFrame = renderedFrame(
-                        normalizedFrame,
-                        origin: .zero,
-                        canvasSize: canvasSize
-                    )
+                    let visualFrame = item.isThumbstick
+                        ? renderedThumbstickFrame(
+                            normalizedFrame,
+                            mappingSize: layout.mappingSize,
+                            canvasSize: canvasSize
+                        )
+                        : renderedFrame(
+                            normalizedFrame,
+                            origin: .zero,
+                            canvasSize: canvasSize
+                        )
                     ManicSkinFLEXItemOverlay(
                         item: item,
                         frame: binding(for: item),
@@ -1626,7 +1682,7 @@ private struct ManicSkinFLEXItemOverlay: View {
 
     var body: some View {
         ZStack {
-            if let assetURL = item.normalAssetURL,
+            if let assetURL = item.thumbstickAssetURL ?? item.normalAssetURL,
                let image = ManicSkinPDFRenderer.image(at: assetURL) {
                 Image(uiImage: image)
                     .resizable()

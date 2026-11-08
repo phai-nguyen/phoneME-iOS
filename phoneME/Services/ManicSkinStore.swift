@@ -14,6 +14,7 @@ struct ManicSkinItem: Identifiable {
     let frame: CGRect
     let extendedFrame: CGRect
     let normalAssetURL: URL?
+    let thumbstickAssetURL: URL?
     let selectedAssetURL: URL?
     let directKeys: [J2MEKey]
     let directionalKeys: [String: J2MEKey]
@@ -251,9 +252,10 @@ struct ManicSkin: Identifiable {
             let asset = rawItem["asset"] as? [String: Any] ?? [:]
             let thumbstick = rawItem["thumbstick"] as? [String: Any] ?? [:]
             let normalName = asset["normal"] as? String
-                ?? thumbstick["name"] as? String
+            let thumbstickName = thumbstick["name"] as? String
             let selectedName = asset["selected"] as? String
             let normalURL = try assetURL(normalName, folderURL: folderURL)
+            let thumbstickURL = try assetURL(thumbstickName, folderURL: folderURL)
             let selectedURL = try assetURL(selectedName, folderURL: folderURL)
             let thumbstickSize: CGSize?
             if let knobWidth = number(thumbstick["width"]),
@@ -284,6 +286,7 @@ struct ManicSkin: Identifiable {
                     || inputs.isSwitchButton
                     || inputs.specialAction != nil
                     || normalURL != nil
+                    || thumbstickURL != nil
                     || selectedURL != nil else {
                 continue
             }
@@ -295,6 +298,7 @@ struct ManicSkin: Identifiable {
                 frame: frame,
                 extendedFrame: extendedFrame,
                 normalAssetURL: normalURL,
+                thumbstickAssetURL: thumbstickURL,
                 selectedAssetURL: selectedURL,
                 directKeys: inputs.directKeys,
                 directionalKeys: inputs.directionalKeys,
