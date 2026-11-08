@@ -1,6 +1,7 @@
 import CoreGraphics
 import SwiftUI
 import UIKit
+import simd
 
 @MainActor
 struct ManicSkinView<ScreenContent: View>: View {
@@ -614,19 +615,15 @@ private final class ManicSkinNativeThumbstickView: UIView {
         let insetSideLength = Double(bounds.midX)
         guard insetSideLength > 0 else { return }
 
-        let insetFrame = CGRect(
-            x: center.x - insetSideLength / 2,
-            y: center.y - insetSideLength / 2,
-            width: insetSideLength,
-            height: insetSideLength
-        )
+        let insetMinX = Double(center.x) - insetSideLength / 2
+        let insetMinY = Double(center.y) - insetSideLength / 2
 
-        var xAxis = Double((CGFloat(adjustedX) - insetFrame.minX) / insetFrame.width)
+        var xAxis = (adjustedX - insetMinX) / insetSideLength
         xAxis = min(max(xAxis, 0), 1)
         xAxis = (xAxis * 2) - 1
         if abs(xAxis) < 0.1 { xAxis = 0 }
 
-        var yAxis = Double((CGFloat(adjustedY) - insetFrame.minY) / insetFrame.height)
+        var yAxis = (adjustedY - insetMinY) / insetSideLength
         yAxis = max(yAxis, 0)
         yAxis = min(yAxis, 1)
         yAxis = -((yAxis * 2) - 1)
