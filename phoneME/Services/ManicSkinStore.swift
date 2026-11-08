@@ -489,7 +489,7 @@ struct ManicSkin: Identifiable {
                         }
                     } else if let key = key(for: rawValue) {
                         direct.append(key)
-                    } else if let action = specialAction(for: rawValue) {
+                    } else if let action = appAction(for: rawValue) {
                         specialAction = action
                     }
                 }
@@ -505,7 +505,7 @@ struct ManicSkin: Identifiable {
             if let key = key(for: single) {
                 direct = [key]
             } else {
-                specialAction = specialAction(for: single)
+                specialAction = appAction(for: single)
             }
         }
 
@@ -514,7 +514,7 @@ struct ManicSkin: Identifiable {
         return (direct, directional, isTouchScreen, isSwitchButton, specialAction)
     }
 
-    private static func specialAction(for value: String) -> String? {
+    private static func appAction(for value: String) -> String? {
         switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "menu": return "menu"
         case "flex": return "flex"
