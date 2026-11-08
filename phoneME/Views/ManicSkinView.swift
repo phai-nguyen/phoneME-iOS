@@ -134,6 +134,11 @@ struct ManicSkinView<ScreenContent: View>: View {
                             origin: origin,
                             canvasSize: canvasSize
                         )
+                    let backgroundRingFrame = renderedFrame(
+                        item.frame,
+                        origin: origin,
+                        canvasSize: canvasSize
+                    )
                     let animationBeginFrame = item.animation.map {
                         renderedFrame($0.beginFrame, origin: origin, canvasSize: canvasSize)
                     }.map {
@@ -154,6 +159,20 @@ struct ManicSkinView<ScreenContent: View>: View {
                             height: $0.height
                         )
                     }
+                    if item.isThumbstick {
+                        Ellipse()
+                            .fill(Color.black)
+                            .frame(
+                                width: max(backgroundRingFrame.width, 1),
+                                height: max(backgroundRingFrame.height, 1)
+                            )
+                            .position(
+                                x: backgroundRingFrame.midX,
+                                y: backgroundRingFrame.midY
+                            )
+                            .allowsHitTesting(false)
+                    }
+
                     ManicSkinItemView(
                         item: item,
                         canvasScale: item.isThumbstick
@@ -435,17 +454,6 @@ private struct ManicSkinItemView: View {
         let displayedArtworkFrame = artworkFrame
 
         ZStack(alignment: .topLeading) {
-            if item.isThumbstick {
-                Ellipse()
-                    .fill(Color.black)
-                    .frame(width: max(visualSize.width, 1), height: max(visualSize.height, 1))
-                    .position(
-                        x: visualOrigin.x + visualSize.width / 2,
-                        y: visualOrigin.y + visualSize.height / 2
-                    )
-                    .allowsHitTesting(false)
-            }
-
             artwork
                 .frame(
                     width: max(displayedArtworkFrame.width, 1),
@@ -1372,14 +1380,22 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
                             origin: .zero,
                             canvasSize: canvasSize
                         )
+                    let backgroundRingFrame = renderedFrame(
+                        normalizedFrame,
+                        origin: .zero,
+                        canvasSize: canvasSize
+                    )
                     if item.isThumbstick {
                         Ellipse()
                             .fill(Color.black)
                             .frame(
-                                width: max(visualFrame.width, 1),
-                                height: max(visualFrame.height, 1)
+                                width: max(backgroundRingFrame.width, 1),
+                                height: max(backgroundRingFrame.height, 1)
                             )
-                            .position(x: visualFrame.midX, y: visualFrame.midY)
+                            .position(
+                                x: backgroundRingFrame.midX,
+                                y: backgroundRingFrame.midY
+                            )
                             .allowsHitTesting(false)
                     }
 
