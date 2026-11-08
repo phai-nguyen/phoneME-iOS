@@ -742,6 +742,9 @@ final class ManicSkinStore: ObservableObject {
         itemFrames: [String: CGRect],
         screenFrame: CGRect
     ) throws {
+        guard Self.isValidEditableFrame(screenFrame) else {
+            throw ManicSkinImportError.invalidMetadata
+        }
         let infoURL = skin.folderURL.appendingPathComponent("info.json")
         let originalData = try Data(contentsOf: infoURL)
         guard var root = try JSONSerialization.jsonObject(with: originalData) as? [String: Any] else {
@@ -779,6 +782,17 @@ final class ManicSkinStore: ObservableObject {
                     thumbstick["height"] = initialKnob.height * scaleY
                     rawItems[item.jsonIndex]["thumbstick"] = thumbstick
                 }
+            }
+            // DeltaCore links a touch-screen item to the edited outputFrame.
+            // Keep its pointer hit area synchronized when the screen is moved
+            // or resized, rather than leaving it at its old coordinates.
+            for item in layout.items where item.isTouchScreen {
+                guard rawItems.indices.contains(item.jsonIndex) else { continue }
+                rawItems[item.jsonIndex]["frame"] = Self.serializedFrame(
+                    screenFrame,
+                    mappingSize: layout.mappingSize,
+                    placement: item.placement
+                )
             }
             representation["items"] = rawItems
 

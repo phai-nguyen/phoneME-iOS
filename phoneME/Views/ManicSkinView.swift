@@ -1275,7 +1275,7 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
                     .zIndex(20)
                 }
 
-                ForEach(layout.items) { item in
+                ForEach(layout.items.filter { !$0.isTouchScreen }) { item in
                     let normalizedFrame = itemFrames[item.id] ?? item.frame
                     let visualFrame = renderedFrame(
                         normalizedFrame,
@@ -1367,7 +1367,7 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
             Button {
                 page = .buttons
                 if selectedItemID == nil {
-                    selectedItemID = layout.items.first?.id
+                    selectedItemID = layout.items.first(where: { !$0.isTouchScreen })?.id
                 }
             } label: {
                 Text("Nút")
@@ -1448,7 +1448,7 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
             uniqueKeysWithValues: layout.items.map { ($0.id, $0.frame) }
         )
         screenFrame = layout.screenFrame
-        selectedItemID = layout.items.first?.id
+        selectedItemID = layout.items.first(where: { !$0.isTouchScreen })?.id
     }
 
     private func restoreOriginalFrames(layout: ManicSkinLayout) {
