@@ -1543,7 +1543,7 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
                 .font(.system(size: 13, weight: .semibold))
             Text(
                 page == .screen
-                    ? "Kéo khung để di chuyển · Kéo góc để thay đổi kích thước"
+                    ? "Kéo để di chuyển · Chụm hai ngón để thu/phóng đồng đều · Kéo góc để resize"
                     : "Chọn và kéo nút · Kéo góc dưới phải để thay đổi kích thước"
             )
             .font(.system(size: 12, weight: .medium))
@@ -1661,6 +1661,7 @@ private struct ManicSkinFLEXScreenOverlay: View {
 
     @State private var moveStartFrame: CGRect?
     @State private var resizeStartFrame: CGRect?
+    @State private var pinchStartFrame: CGRect?
 
     var body: some View {
         let rect = CGRect(
@@ -1695,6 +1696,9 @@ private struct ManicSkinFLEXScreenOverlay: View {
         .gesture(
             DragGesture(minimumDistance: 2, coordinateSpace: .global)
                 .onChanged { value in
+                    // Once a two-finger pinch begins, stop updating from the
+                    // one-finger pan baseline so the two gestures cannot fight.
+                    guard pinchStartFrame == nil else { return }
                     if moveStartFrame == nil { moveStartFrame = frame }
                     guard let start = moveStartFrame else { return }
                     let dx = value.translation.width / max(canvasSize.width, 1)
@@ -1709,6 +1713,27 @@ private struct ManicSkinFLEXScreenOverlay: View {
                     )
                 }
                 .onEnded { _ in moveStartFrame = nil }
+        )
+        .simultaneousGesture(
+            MagnificationGesture(minimumScaleDelta: 0.01)
+                .onChanged { magnification in
+                    if pinchStartFrame == nil {
+                        moveStartFrame = nil
+                        pinchStartFrame = frame
+                    }
+                    guard let start = pinchStartFrame else { return }
+                    frame = Self.scaledAroundCenter(
+                        start,
+                        magnification: magnification
+                    )
+                }
+                .onEnded { _ in
+                    let optimizedFrame = Self.optimized(frame, canvasSize: canvasSize)
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        frame = optimizedFrame
+                    }
+                    pinchStartFrame = nil
+                }
         )
         .overlay(alignment: .bottomTrailing) {
             Circle()
@@ -1740,6 +1765,67 @@ private struct ManicSkinFLEXScreenOverlay: View {
                         .onEnded { _ in resizeStartFrame = nil }
                 )
         }
+    }
+
+    private static func scaledAroundCenter(
+        _ initial: CGRect,
+        magnification: CGFloat
+    ) -> CGRect {
+        let initialWidth = max(initial.width, 0.001)
+        let initialHeight = max(initial.height, 0.001)
+        let minimumScale = max(0.06 / initialWidth, 0.06 / initialHeight)
+        let maximumScale = min(1.0 / initialWidth, 1.0 / initialHeight)
+        let requestedScale = min(max(magnification, 0.15), 4.0)
+        let scale = min(max(requestedScale, minimumScale), max(maximumScale, minimumScale))
+
+        let width = initialWidth * scale
+        let height = initialHeight * scale
+        let center = CGPoint(x: initial.midX, y: initial.midY)
+        return positionClamped(
+            CGRect(
+                x: center.x - width / 2,
+                y: center.y - height / 2,
+                width: width,
+                height: height
+            )
+        )
+    }
+
+    private static func optimized(
+        _ proposed: CGRect,
+        canvasSize: CGSize
+    ) -> CGRect {
+        guard canvasSize.width > 0, canvasSize.height > 0 else {
+            return proposed
+        }
+
+        // Like ManicEMU's optimizeScale: uniformly shrink only when the
+        // selected game viewport exceeds the available mapping canvas.
+        let width = max(proposed.width, 0.001)
+        let height = max(proposed.height, 0.001)
+        let fitScale = min(1.0, min(1.0 / width, 1.0 / height))
+        let fittedWidth = width * fitScale
+        let fittedHeight = height * fitScale
+        let center = CGPoint(x: proposed.midX, y: proposed.midY)
+        return positionClamped(
+            CGRect(
+                x: center.x - fittedWidth / 2,
+                y: center.y - fittedHeight / 2,
+                width: fittedWidth,
+                height: fittedHeight
+            )
+        )
+    }
+
+    private static func positionClamped(_ proposed: CGRect) -> CGRect {
+        let width = min(max(proposed.width, 0.001), 1.0)
+        let height = min(max(proposed.height, 0.001), 1.0)
+        return CGRect(
+            x: min(max(proposed.midX - width / 2, 0), 1 - width),
+            y: min(max(proposed.midY - height / 2, 0), 1 - height),
+            width: width,
+            height: height
+        )
     }
 
     private static func clamped(_ proposed: CGRect) -> CGRect {
