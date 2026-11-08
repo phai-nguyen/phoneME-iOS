@@ -243,8 +243,54 @@ private final class ManicSkinInputCoordinator: ObservableObject {
     }
 
     func sendPointer(normalizedPoint: CGPoint, action: Int32) {
-        guard let session, let frameSize = session.frameStore.frameSize else {
+        guard let session else {
+            activePointer = nil
             return
+        }
+
+        if action == 2 {
+            guard let activePointer else { return }
+
+            let releasePoint: (x: Int32, y: Int32)
+            if let frameSize = session.frameStore.frameSize {
+                let width = max(Int(frameSize.width.rounded()), 1)
+                let height = max(Int(frameSize.height.rounded()), 1)
+                let normalizedX = min(max(normalizedPoint.x, 0), 1)
+                let normalizedY = min(max(normalizedPoint.y, 0), 1)
+                releasePoint = (
+                    Int32(min(max(Int(normalizedX * CGFloat(width)), 0), width - 1)),
+                    Int32(min(max(Int(normalizedY * CGFloat(height)), 0), height - 1))
+                )
+            } else {
+                releasePoint = activePointer
+            }
+
+            session.sendPointer(
+                x: releasePoint.x,
+                y: releasePoint.y,
+                action: 2
+            )
+            self.activePointer = nil
+            return
+        }
+
+        guard let frameSize = session.frameStore.frameSize else {
+            return
+        }
+        // A move is valid only after a corresponding pointer-down.
+        guard action != 3 || activePointer != nil else {
+            return
+        }
+
+        // Recover safely if a new pointer-down arrives before the previous
+        // pointer was released (for example after a view transition).
+        if action == 1, let activePointer {
+            session.sendPointer(
+                x: activePointer.x,
+                y: activePointer.y,
+                action: 2
+            )
+            self.activePointer = nil
         }
 
         let width = max(Int(frameSize.width.rounded()), 1)
@@ -255,11 +301,7 @@ private final class ManicSkinInputCoordinator: ObservableObject {
         let y = min(max(Int(normalizedY * CGFloat(height)), 0), height - 1)
 
         session.sendPointer(x: Int32(x), y: Int32(y), action: action)
-        if action == 2 {
-            activePointer = nil
-        } else {
-            activePointer = (Int32(x), Int32(y))
-        }
+        activePointer = (Int32(x), Int32(y))
     }
 
     func releaseAll() {
