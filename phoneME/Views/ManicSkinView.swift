@@ -1345,29 +1345,39 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
                         )
                 }
 
-                screenContent()
-                    .frame(
-                        width: max(displayedScreenFrame.width, 1),
-                        height: max(displayedScreenFrame.height, 1)
-                    )
-                    .position(
-                        x: displayedScreenFrame.midX,
-                        y: displayedScreenFrame.midY
-                    )
-                    .clipped()
-                    .opacity(page == .screen ? 1 : 0.24)
-                    .allowsHitTesting(false)
+                // Separate the selected Java output viewport from the
+                // controller skin, just like ManicEMU's screensContainerView.
+                ZStack(alignment: .topLeading) {
+                    screenContent()
+                        .frame(
+                            width: max(displayedScreenFrame.width, 1),
+                            height: max(displayedScreenFrame.height, 1)
+                        )
+                        .position(
+                            x: displayedScreenFrame.midX,
+                            y: displayedScreenFrame.midY
+                        )
+                        .clipped()
+                        .allowsHitTesting(false)
 
-                if page == .screen {
-                    ManicSkinFLEXScreenOverlay(
-                        frame: $screenFrame,
-                        canvasSize: screenCanvasSize,
-                        origin: screenOrigin
-                    )
-                    .zIndex(20)
+                    if page == .screen {
+                        ManicSkinFLEXScreenOverlay(
+                            frame: $screenFrame,
+                            canvasSize: screenCanvasSize,
+                            origin: screenOrigin
+                        )
+                    }
                 }
+                .frame(width: canvasSize.width, height: canvasSize.height)
+                .clipped()
+                .opacity(page == .screen ? 1 : 0.24)
+                .allowsHitTesting(page == .screen)
+                .zIndex(page == .screen ? 40 : 10)
 
-                ForEach(layout.items.filter { !$0.isTouchScreen }) { item in
+                // Controller items live in an independent full-canvas layer,
+                // mirroring ManicEMU's buttonsContainerView.
+                ZStack(alignment: .topLeading) {
+                    ForEach(layout.items.filter { !$0.isTouchScreen }) { item in
                     let normalizedFrame = itemFrames[item.id] ?? item.frame
                     let visualFrame = item.isThumbstick
                         ? renderedThumbstickFrame(
@@ -1418,10 +1428,14 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
                         height: max(visualFrame.height, 1)
                     )
                     .position(x: visualFrame.midX, y: visualFrame.midY)
-                    .opacity(page == .buttons ? 1 : 0.2)
-                    .allowsHitTesting(page == .buttons)
                     .zIndex(selectedItemID == item.id ? 30 : 10)
+                    }
                 }
+                .frame(width: canvasSize.width, height: canvasSize.height)
+                .clipped()
+                .opacity(page == .buttons ? 1 : 0.2)
+                .allowsHitTesting(page == .buttons)
+                .zIndex(page == .buttons ? 40 : 5)
 
                 VStack(spacing: 0) {
                     toolbar(layout: layout)
@@ -1683,13 +1697,41 @@ private enum ManicSkinFLEXScreenEdge: Equatable {
     }
 }
 
+private enum ManicSkinFLEXScreenEdge: Equatable {
+    case top
+    case bottom
+    case left
+    case right
+
+    var symbol: String {
+        switch self {
+        case .top: return "chevron.compact.up"
+        case .bottom: return "chevron.compact.down"
+        case .left: return "chevron.compact.left"
+        case .right: return "chevron.compact.right"
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .top: return "Resize top edge"
+        case .bottom: return "Resize bottom edge"
+        case .left: return "Resize left edge"
+        case .right: return "Resize right edge"
+        }
+    }
+
+    var isHorizontalEdge: Bool {
+        self == .top || self == .bottom
+    }
+}
+
 private struct ManicSkinFLEXScreenOverlay: View {
     @Binding var frame: CGRect
     let canvasSize: CGSize
     let origin: CGPoint
 
     @State private var moveStartFrame: CGRect?
-    @State private var resizeStartFrame: CGRect?
     @State private var pinchStartFrame: CGRect?
     @State private var edgeResizeStartFrame: CGRect?
 
@@ -1706,6 +1748,7 @@ private struct ManicSkinFLEXScreenOverlay: View {
                 .fill(Color.cyan.opacity(0.08))
             Rectangle()
                 .stroke(Color.cyan, style: StrokeStyle(lineWidth: 2, dash: [8, 5]))
+
             VStack {
                 HStack {
                     Text("JAVA SCREEN")
@@ -1720,51 +1763,9 @@ private struct ManicSkinFLEXScreenOverlay: View {
             }
             .padding(5)
         }
-        .frame(width: max(rect.width, 1), height: max(rect.height, 1))
-        .position(x: rect.midX, y: rect.midY)
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 2, coordinateSpace: .global)
-                .onChanged { value in
-                    // Once a two-finger pinch begins, stop updating from the
-                    // one-finger pan baseline so the two gestures cannot fight.
-                    guard pinchStartFrame == nil else { return }
-                    if moveStartFrame == nil { moveStartFrame = frame }
-                    guard let start = moveStartFrame else { return }
-                    let dx = value.translation.width / max(canvasSize.width, 1)
-                    let dy = value.translation.height / max(canvasSize.height, 1)
-                    frame = Self.clamped(
-                        CGRect(
-                            x: start.minX + dx,
-                            y: start.minY + dy,
-                            width: start.width,
-                            height: start.height
-                        )
-                    )
-                }
-                .onEnded { _ in moveStartFrame = nil }
-        )
-        .simultaneousGesture(
-            MagnificationGesture(minimumScaleDelta: 0.01)
-                .onChanged { magnification in
-                    if pinchStartFrame == nil {
-                        moveStartFrame = nil
-                        pinchStartFrame = frame
-                    }
-                    guard let start = pinchStartFrame else { return }
-                    frame = Self.scaledAroundCenter(
-                        start,
-                        magnification: magnification
-                    )
-                }
-                .onEnded { _ in
-                    let optimizedFrame = Self.optimized(frame, canvasSize: canvasSize)
-                    withAnimation(.easeOut(duration: 0.12)) {
-                        frame = optimizedFrame
-                    }
-                    pinchStartFrame = nil
-                }
-        )
+        // Important: attach the four edge hit zones to this rectangle BEFORE
+        // applying .frame and .position. Attaching them afterwards makes
+        // SwiftUI align them against the full FLEX canvas instead.
         .overlay(alignment: .top) {
             edgeHandle(.top)
                 .frame(maxWidth: .infinity)
@@ -1793,6 +1794,47 @@ private struct ManicSkinFLEXScreenOverlay: View {
                 .contentShape(Rectangle())
                 .highPriorityGesture(edgeResizeGesture(.right))
         }
+        .frame(width: max(rect.width, 1), height: max(rect.height, 1))
+        .position(x: rect.midX, y: rect.midY)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                .onChanged { value in
+                    guard pinchStartFrame == nil, edgeResizeStartFrame == nil else { return }
+                    if moveStartFrame == nil { moveStartFrame = frame }
+                    guard let start = moveStartFrame else { return }
+                    let dx = value.translation.width / max(canvasSize.width, 1)
+                    let dy = value.translation.height / max(canvasSize.height, 1)
+                    frame = Self.clamped(
+                        CGRect(
+                            x: start.minX + dx,
+                            y: start.minY + dy,
+                            width: start.width,
+                            height: start.height
+                        )
+                    )
+                }
+                .onEnded { _ in moveStartFrame = nil }
+        )
+        .simultaneousGesture(
+            MagnificationGesture(minimumScaleDelta: 0.01)
+                .onChanged { magnification in
+                    guard edgeResizeStartFrame == nil else { return }
+                    if pinchStartFrame == nil {
+                        moveStartFrame = nil
+                        pinchStartFrame = frame
+                    }
+                    guard let start = pinchStartFrame else { return }
+                    frame = Self.scaledAroundCenter(start, magnification: magnification)
+                }
+                .onEnded { _ in
+                    let optimizedFrame = Self.optimized(frame, canvasSize: canvasSize)
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        frame = optimizedFrame
+                    }
+                    pinchStartFrame = nil
+                }
+        )
     }
 
     private func edgeHandle(_ edge: ManicSkinFLEXScreenEdge) -> some View {
@@ -1811,7 +1853,6 @@ private struct ManicSkinFLEXScreenOverlay: View {
             .onChanged { value in
                 if edgeResizeStartFrame == nil {
                     moveStartFrame = nil
-                    resizeStartFrame = nil
                     pinchStartFrame = nil
                     edgeResizeStartFrame = frame
                 }
@@ -1841,7 +1882,6 @@ private struct ManicSkinFLEXScreenOverlay: View {
         translation: CGPoint,
         canvasSize: CGSize
     ) -> CGRect {
-        // Match ManicEMU's 50-point minimum edge size in normalized mapping coordinates.
         let minimumWidth = min(1.0, 50 / max(canvasSize.width, 1))
         let minimumHeight = min(1.0, 50 / max(canvasSize.height, 1))
 
@@ -1932,8 +1972,6 @@ private struct ManicSkinFLEXScreenOverlay: View {
             return proposed
         }
 
-        // Like ManicEMU's optimizeScale: uniformly shrink only when the
-        // selected game viewport exceeds the available mapping canvas.
         let width = max(proposed.width, 0.001)
         let height = max(proposed.height, 0.001)
         let fitScale = min(1.0, min(1.0 / width, 1.0 / height))
