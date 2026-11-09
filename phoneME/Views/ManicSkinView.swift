@@ -1378,58 +1378,58 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
                 // mirroring ManicEMU's buttonsContainerView.
                 ZStack(alignment: .topLeading) {
                     ForEach(layout.items.filter { !$0.isTouchScreen }) { item in
-                    let normalizedFrame = itemFrames[item.id] ?? item.frame
-                    let visualFrame = item.isThumbstick
-                        ? renderedThumbstickFrame(
-                            normalizedFrame,
-                            mappingSize: layout.mappingSize,
-                            canvasSize: canvasSize
-                        )
-                        : renderedFrame(
+                        let normalizedFrame = itemFrames[item.id] ?? item.frame
+                        let visualFrame = item.isThumbstick
+                            ? renderedThumbstickFrame(
+                                normalizedFrame,
+                                mappingSize: layout.mappingSize,
+                                canvasSize: canvasSize
+                            )
+                            : renderedFrame(
+                                normalizedFrame,
+                                origin: .zero,
+                                canvasSize: canvasSize
+                            )
+                        let backgroundRingFrame = renderedFrame(
                             normalizedFrame,
                             origin: .zero,
                             canvasSize: canvasSize
                         )
-                    let backgroundRingFrame = renderedFrame(
-                        normalizedFrame,
-                        origin: .zero,
-                        canvasSize: canvasSize
-                    )
-                    if item.isThumbstick {
-                        Ellipse()
-                            .fill(Color.black)
-                            .frame(
-                                width: max(backgroundRingFrame.width, 1),
-                                height: max(backgroundRingFrame.height, 1)
-                            )
-                            .position(
-                                x: backgroundRingFrame.midX,
-                                y: backgroundRingFrame.midY
-                            )
-                            .allowsHitTesting(false)
-                    }
-
-                    ManicSkinFLEXItemOverlay(
-                        item: item,
-                        frame: binding(for: item),
-                        canvasSize: item.isThumbstick
-                            ? fittedThumbstickCanvasSize(
-                                mappingSize: layout.mappingSize,
-                                canvasSize: canvasSize
-                            )
-                            : canvasSize,
-                        isSelected: selectedItemID == item.id,
-                        onSelect: {
-                            selectedItemID = item.id
+                        if item.isThumbstick {
+                            Ellipse()
+                                .fill(Color.black)
+                                .frame(
+                                    width: max(backgroundRingFrame.width, 1),
+                                    height: max(backgroundRingFrame.height, 1)
+                                )
+                                .position(
+                                    x: backgroundRingFrame.midX,
+                                    y: backgroundRingFrame.midY
+                                )
+                                .allowsHitTesting(false)
                         }
-                    )
-                    .frame(
-                        width: max(visualFrame.width, 1),
-                        height: max(visualFrame.height, 1)
-                    )
-                    .position(x: visualFrame.midX, y: visualFrame.midY)
-                    .zIndex(selectedItemID == item.id ? 30 : 10)
-                    }
+
+                        ManicSkinFLEXItemOverlay(
+                            item: item,
+                            frame: binding(for: item),
+                            canvasSize: item.isThumbstick
+                                ? fittedThumbstickCanvasSize(
+                                    mappingSize: layout.mappingSize,
+                                    canvasSize: canvasSize
+                                )
+                                : canvasSize,
+                            isSelected: selectedItemID == item.id,
+                            onSelect: {
+                                selectedItemID = item.id
+                            }
+                        )
+                        .frame(
+                            width: max(visualFrame.width, 1),
+                            height: max(visualFrame.height, 1)
+                        )
+                        .position(x: visualFrame.midX, y: visualFrame.midY)
+                        .zIndex(selectedItemID == item.id ? 30 : 10)
+                        }
                 }
                 .frame(width: canvasSize.width, height: canvasSize.height)
                 .clipped()
@@ -1668,35 +1668,6 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
 }
 
 @MainActor
-private enum ManicSkinFLEXScreenEdge: Equatable {
-    case top
-    case bottom
-    case left
-    case right
-
-    var symbol: String {
-        switch self {
-        case .top: return "chevron.compact.up"
-        case .bottom: return "chevron.compact.down"
-        case .left: return "chevron.compact.left"
-        case .right: return "chevron.compact.right"
-        }
-    }
-
-    var accessibilityLabel: String {
-        switch self {
-        case .top: return "Resize top edge"
-        case .bottom: return "Resize bottom edge"
-        case .left: return "Resize left edge"
-        case .right: return "Resize right edge"
-        }
-    }
-
-    var isHorizontalEdge: Bool {
-        self == .top || self == .bottom
-    }
-}
-
 private enum ManicSkinFLEXScreenEdge: Equatable {
     case top
     case bottom
