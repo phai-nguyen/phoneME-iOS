@@ -134,11 +134,6 @@ struct ManicSkinView<ScreenContent: View>: View {
                             origin: origin,
                             canvasSize: canvasSize
                         )
-                    let backgroundRingFrame = renderedFrame(
-                        item.frame,
-                        origin: origin,
-                        canvasSize: canvasSize
-                    )
                     let animationBeginFrame = item.animation.map {
                         renderedFrame($0.beginFrame, origin: origin, canvasSize: canvasSize)
                     }.map {
@@ -159,20 +154,6 @@ struct ManicSkinView<ScreenContent: View>: View {
                             height: $0.height
                         )
                     }
-                    if item.isThumbstick {
-                        Ellipse()
-                            .fill(Color.black)
-                            .frame(
-                                width: max(backgroundRingFrame.width, 1),
-                                height: max(backgroundRingFrame.height, 1)
-                            )
-                            .position(
-                                x: backgroundRingFrame.midX,
-                                y: backgroundRingFrame.midY
-                            )
-                            .allowsHitTesting(false)
-                    }
-
                     ManicSkinItemView(
                         item: item,
                         canvasScale: item.isThumbstick
@@ -1390,25 +1371,6 @@ private struct ManicSkinFlexEditorView<ScreenContent: View>: View {
                                 origin: .zero,
                                 canvasSize: canvasSize
                             )
-                        let backgroundRingFrame = renderedFrame(
-                            normalizedFrame,
-                            origin: .zero,
-                            canvasSize: canvasSize
-                        )
-                        if item.isThumbstick {
-                            Ellipse()
-                                .fill(Color.black)
-                                .frame(
-                                    width: max(backgroundRingFrame.width, 1),
-                                    height: max(backgroundRingFrame.height, 1)
-                                )
-                                .position(
-                                    x: backgroundRingFrame.midX,
-                                    y: backgroundRingFrame.midY
-                                )
-                                .allowsHitTesting(false)
-                        }
-
                         ManicSkinFLEXItemOverlay(
                             item: item,
                             frame: binding(for: item),
